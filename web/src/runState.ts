@@ -584,7 +584,7 @@ function getEvaluationInputStatus(
 ): NodeInputStatus {
   const mode = String(node.data.params?.mode ?? 'compare');
   if (mode === 'bic') {
-    const graphCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['graph', 'truth_graph', 'pred_graph']);
+    const graphCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph', ['graph', 'truth_graph', 'pred_graph']);
     const dataCount = countIncomingByKind(incoming, nodes, nodeTypes, 'data', ['data']);
     const missing: string[] = [];
     if (graphCount < 1) missing.push('graph');
@@ -594,15 +594,15 @@ function getEvaluationInputStatus(
 
   const hasTargetHandles = incoming.some((edge) => Boolean(edge.targetHandle));
   if (hasTargetHandles) {
-    const legacyTruthCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['truth_graph']);
-    const legacyPredCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['pred_graph']);
+    const legacyTruthCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph', ['truth_graph']);
+    const legacyPredCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph', ['pred_graph']);
     if (legacyTruthCount || legacyPredCount) {
       const missing: string[] = [];
       if (legacyTruthCount < 1) missing.push('truth_graph');
       if (legacyPredCount < 1) missing.push('pred_graph');
       return { required: 2, satisfied: Math.min(legacyTruthCount, 1) + Math.min(legacyPredCount, 1), missing };
     }
-    const graphCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['graph']);
+    const graphCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph', ['graph']);
     return {
       required: 2,
       satisfied: Math.min(graphCount, 2),
@@ -610,7 +610,7 @@ function getEvaluationInputStatus(
     };
   }
 
-  const graphCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like');
+  const graphCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph');
   return {
     required: 2,
     satisfied: Math.min(graphCount, 2),
@@ -685,6 +685,9 @@ function arePortKindsCompatible(sourceKind: string, targetKind: string): boolean
     return true;
   }
   if (targetKind === 'graph_like' && ['graph_like', 'graph', 'data', 'algorithm_result'].includes(sourceKind)) {
+    return true;
+  }
+  if (targetKind === 'graph' && ['graph_like', 'data', 'algorithm_result'].includes(sourceKind)) {
     return true;
   }
   return false;

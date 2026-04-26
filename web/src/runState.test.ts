@@ -215,7 +215,7 @@ describe('connection preflight', () => {
         input_ports: [{ id: 'graph', label: 'Graph', kind: 'graph', required: true }],
         output_ports: [
           { id: 'data', label: 'Data', kind: 'data' },
-          { id: 'graph', label: 'Graph', kind: 'graph_like' },
+          { id: 'graph', label: 'Graph', kind: 'graph' },
         ],
       },
       {
@@ -226,7 +226,7 @@ describe('connection preflight', () => {
         outputs: ['evaluation'],
         fields: [],
         input_ports: [
-          { id: 'graph', label: 'Graph', kind: 'graph_like', required: true, min_count: 2, max_count: 2 },
+          { id: 'graph', label: 'Graph', kind: 'graph', required: true, min_count: 2, max_count: 2 },
           { id: 'data', label: 'Data', kind: 'data', required: false, min_count: 0 },
         ],
         output_ports: [{ id: 'evaluation', label: 'Evaluation', kind: 'evaluation' }],

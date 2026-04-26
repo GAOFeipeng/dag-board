@@ -174,6 +174,7 @@ def _context_kinds(context: NodeContext) -> set[str]:
     kind = str(context.public.get("kind", ""))
     kinds = {kind} if kind else set()
     if kind in {"graph", "data", "algorithm_result"}:
+        kinds.add("graph")
         kinds.add("graph_like")
     return kinds
 

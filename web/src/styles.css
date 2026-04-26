@@ -532,12 +532,9 @@ button.primary:hover {
   background: #2a3034;
 }
 
-.port-kind-graph {
-  --port-color: #48c78e;
-}
-
+.port-kind-graph,
 .port-kind-graph_like {
-  --port-color: #80c7f4;
+  --port-color: #48c78e;
 }
 
 .port-kind-data {
