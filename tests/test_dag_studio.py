@@ -4,10 +4,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from dag_studio.baselines import BaselineResult
 from dag_studio.execution import WorkflowExecutor, WorkflowValidationError, topological_order
 from dag_studio.jobs import JobManager
 from dag_studio.schemas import WorkflowDefinition
@@ -147,6 +149,55 @@ def test_workflow_executor_smoke(tmp_path: Path) -> None:
     assert records["data"].outputs["data"]["data_preview"]["rows"]
     assert "metrics" in records["eval"].outputs["evaluation"]
     assert records["view"].outputs["graph_view"]["edges"]
+
+
+def test_algorithm_node_treats_blank_optional_params_as_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_baseline(name: str, X: np.ndarray, params: dict[str, Any]) -> BaselineResult:
+        assert name == "PC"
+        assert params["w_threshold"] is None
+        W = np.zeros((X.shape[1], X.shape[1]), dtype=float)
+        return BaselineResult(
+            W_est=W,
+            B_est=np.zeros_like(W, dtype=int),
+            edge_scores=W,
+            provider="test",
+            graph_space="dag",
+            runtime=0.0,
+            is_dag=True,
+            params={},
+        )
+
+    import dag_studio.execution as execution
+
+    monkeypatch.setattr(execution, "run_official_baseline", fake_baseline)
+    storage = LocalStudioStorage(tmp_path)
+    _run_id, run_dir = storage.create_run_dir("blank-algorithm-params")
+    workflow = _workflow("PC")
+    for node in workflow.nodes:
+        if node.id == "algo":
+            node.data["params"] = {
+                "algorithm_id": "PC",
+                "alpha": None,
+                "variant": None,
+                "criterion": None,
+                "lambda1": None,
+                "lambda2": None,
+                "max_iter": None,
+                "warm_iter": None,
+                "T": None,
+                "rank": None,
+                "w_threshold": None,
+                "seed": None,
+                "library_params": None,
+            }
+
+    records = WorkflowExecutor(storage, run_dir).execute(workflow)
+
+    assert records["algo"].status == "success"
+    assert records["algo"].outputs["algorithm_result"]["w_threshold"] == 0.3
 
 
 def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:

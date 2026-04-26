@@ -63,6 +63,15 @@ def _node_params(node: WorkflowNode) -> Dict[str, Any]:
     return params
 
 
+def _has_value(value: Any) -> bool:
+    return value is not None and value != ""
+
+
+def _float_param(params: dict[str, Any], key: str, default: float) -> float:
+    value = params.get(key)
+    return float(value) if _has_value(value) else default
+
+
 def _incoming_edges(workflow: WorkflowDefinition) -> dict[str, list[WorkflowEdge]]:
     incoming: dict[str, list[WorkflowEdge]] = {node.id: [] for node in workflow.nodes}
     for edge in workflow.edges:
@@ -685,8 +694,8 @@ class WorkflowExecutor:
     def _execute_algorithm(self, node: WorkflowNode, parents: list[NodeContext]) -> NodeContext:
         data_parent = self._find_parent(parents, "data")
         params = _node_params(node)
-        algorithm_id = str(params.get("algorithm_id", "PC"))
-        threshold = float(params.get("w_threshold", 0.3))
+        algorithm_id = str(params.get("algorithm_id") if _has_value(params.get("algorithm_id")) else "PC")
+        threshold = _float_param(params, "w_threshold", 0.3)
         X = np.asarray(data_parent.arrays["X"], dtype=float)
 
         baseline = run_official_baseline(algorithm_id, X, params)
@@ -788,11 +797,15 @@ class WorkflowExecutor:
         warnings: list[str] = []
         graph_likes = self._graph_likes_from_inputs(parents, input_edges)
         truth, prediction = self._select_compare_graphs(graph_likes)
-        threshold = float(params.get("threshold", 0.3))
+        threshold = _float_param(params, "threshold", 0.3)
         if prediction.kind == "algorithm_result":
             algorithm_parent = next((parent for parent in parents if parent.public.get("kind") == "algorithm_result"), None)
             if algorithm_parent is not None:
-                threshold = float(params.get("threshold", algorithm_parent.public["algorithm_result"].get("w_threshold", threshold)))
+                threshold = _float_param(
+                    params,
+                    "threshold",
+                    float(algorithm_parent.public["algorithm_result"].get("w_threshold", threshold) or threshold),
+                )
         graph_space = str(params.get("graph_space", prediction.graph_space or truth.graph_space or "dag"))
         B_true = np.asarray(truth.B, dtype=int)
         W_est = np.asarray(prediction.W, dtype=float)
@@ -1044,7 +1057,7 @@ class WorkflowExecutor:
             )
         if kind == "algorithm_result":
             W = np.asarray(parent.arrays.get("W_est", parent.arrays.get("B_est")), dtype=float)
-            threshold = float(parent.public["algorithm_result"].get("w_threshold", 0.0))
+            threshold = float(parent.public["algorithm_result"].get("w_threshold", 0.0) or 0.0)
             B = np.asarray(parent.arrays.get("B_est", binary_adjacency(W, threshold)), dtype=int)
             result = parent.public["algorithm_result"]
             graph = result.get("result_graph", {})
@@ -1086,9 +1099,9 @@ class WorkflowExecutor:
 
     def _execute_graph_view(self, node: WorkflowNode, parents: list[NodeContext]) -> NodeContext:
         params = _node_params(node)
-        threshold = float(params.get("threshold", 0.3))
-        top_k = int(params.get("top_k", 200))
-        compare_mode = str(params.get("compare_mode", "single"))
+        threshold = _float_param(params, "threshold", 0.3)
+        top_k = int(params.get("top_k") if _has_value(params.get("top_k")) else 200)
+        compare_mode = str(params.get("compare_mode") if _has_value(params.get("compare_mode")) else "single")
 
         algorithm_parent = self._find_optional_parent(parents, "algorithm_result")
         data_parent = self._find_optional_parent(parents, "data")
