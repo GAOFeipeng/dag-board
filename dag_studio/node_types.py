@@ -37,7 +37,7 @@ NODE_TYPES = [
         input_ports=[NodePort(id="graph", label="Graph", kind="graph", required=True)],
         output_ports=[
             NodePort(id="data", label="Data", kind="data", required=False),
-            NodePort(id="truth_graph", label="Truth Graph", kind="graph_like", required=False),
+            NodePort(id="graph", label="Graph", kind="graph_like", required=False),
         ],
         preview=NodePreviewDefinition(enabled_by_default=True, supported_outputs=["data"]),
         inline_fields=["n_samples", "sem_type", "seed"],
@@ -62,7 +62,7 @@ NODE_TYPES = [
         inputs=["data"],
         outputs=["algorithm_result"],
         input_ports=[NodePort(id="data", label="Data", kind="data", required=True)],
-        output_ports=[NodePort(id="result_graph", label="Result Graph", kind="graph_like", required=False)],
+        output_ports=[NodePort(id="graph", label="Graph", kind="graph_like", required=False)],
         preview=NodePreviewDefinition(enabled_by_default=False, supported_outputs=["algorithm_result"]),
         inline_fields=["algorithm_id", "w_threshold"],
         fields=[
@@ -104,12 +104,11 @@ NODE_TYPES = [
     NodeTypeDefinition(
         id="evaluation",
         label="Structure Evaluation",
-        description="Evaluate a predicted causal graph against ground truth.",
+        description="Compare two causal graphs, or score one causal graph with data using BIC.",
         inputs=["graph", "data", "algorithm_result"],
         outputs=["evaluation"],
         input_ports=[
-            NodePort(id="truth_graph", label="Truth Graph", kind="graph_like", required=True),
-            NodePort(id="pred_graph", label="Pred Graph", kind="graph_like", required=True),
+            NodePort(id="graph", label="Graph", kind="graph_like", required=True, min_count=2, max_count=2),
             NodePort(id="data", label="Data", kind="data", required=False, min_count=0),
         ],
         output_ports=[NodePort(id="evaluation", label="Evaluation", kind="evaluation", required=False)],

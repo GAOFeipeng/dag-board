@@ -202,10 +202,10 @@ def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:
             {"id": "structure-data", "source": "structure", "target": "data", "sourceHandle": "graph", "targetHandle": "graph"},
             {"id": "data-pc", "source": "data", "target": "algo_pc", "sourceHandle": "data", "targetHandle": "data"},
             {"id": "data-ges", "source": "data", "target": "algo_ges", "sourceHandle": "data", "targetHandle": "data"},
-            {"id": "truth-pc", "source": "data", "target": "eval_pc", "sourceHandle": "truth_graph", "targetHandle": "truth_graph"},
-            {"id": "truth-ges", "source": "data", "target": "eval_ges", "sourceHandle": "truth_graph", "targetHandle": "truth_graph"},
-            {"id": "pc-eval", "source": "algo_pc", "target": "eval_pc", "sourceHandle": "result_graph", "targetHandle": "pred_graph"},
-            {"id": "ges-eval", "source": "algo_ges", "target": "eval_ges", "sourceHandle": "result_graph", "targetHandle": "pred_graph"},
+            {"id": "graph-pc-a", "source": "data", "target": "eval_pc", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"id": "graph-ges-a", "source": "data", "target": "eval_ges", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"id": "graph-pc-b", "source": "algo_pc", "target": "eval_pc", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"id": "graph-ges-b", "source": "algo_ges", "target": "eval_ges", "sourceHandle": "graph", "targetHandle": "graph"},
             {"id": "pc-summary", "source": "eval_pc", "target": "summary", "sourceHandle": "evaluation", "targetHandle": "evaluation"},
             {"id": "ges-summary", "source": "eval_ges", "target": "summary", "sourceHandle": "evaluation", "targetHandle": "evaluation"},
         ],
@@ -259,8 +259,8 @@ def test_evaluation_compare_accepts_two_graph_like_inputs(tmp_path: Path) -> Non
         ],
         edges=[
             {"source": "structure", "target": "data", "sourceHandle": "graph", "targetHandle": "graph"},
-            {"source": "structure", "target": "eval", "sourceHandle": "graph", "targetHandle": "truth_graph"},
-            {"source": "data", "target": "eval", "sourceHandle": "truth_graph", "targetHandle": "pred_graph"},
+            {"source": "structure", "target": "eval", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "data", "target": "eval", "sourceHandle": "graph", "targetHandle": "graph"},
         ],
     )
 
@@ -282,14 +282,14 @@ def test_evaluation_compare_blocks_when_second_structure_missing(tmp_path: Path)
             {"id": "eval", "type": "evaluation", "data": {"params": {"mode": "compare"}}},
         ],
         edges=[
-            {"source": "structure", "target": "eval", "sourceHandle": "graph", "targetHandle": "truth_graph"},
+            {"source": "structure", "target": "eval", "sourceHandle": "graph", "targetHandle": "graph"},
         ],
     )
 
     records = WorkflowExecutor(storage, run_dir).execute(workflow)
 
     assert records["eval"].status == "blocked"
-    assert "pred_graph" in (records["eval"].error or "")
+    assert "graph x1" in (records["eval"].error or "")
 
 
 def test_evaluation_bic_requires_graph_and_data(tmp_path: Path) -> None:
@@ -304,7 +304,7 @@ def test_evaluation_bic_requires_graph_and_data(tmp_path: Path) -> None:
         ],
         edges=[
             {"source": "structure", "target": "data", "sourceHandle": "graph", "targetHandle": "graph"},
-            {"source": "structure", "target": "eval", "sourceHandle": "graph", "targetHandle": "truth_graph"},
+            {"source": "structure", "target": "eval", "sourceHandle": "graph", "targetHandle": "graph"},
             {"source": "data", "target": "eval", "sourceHandle": "data", "targetHandle": "data"},
         ],
     )
@@ -327,7 +327,7 @@ def test_evaluation_bic_blocks_without_data(tmp_path: Path) -> None:
             {"id": "eval", "type": "evaluation", "data": {"params": {"mode": "bic"}}},
         ],
         edges=[
-            {"source": "structure", "target": "eval", "sourceHandle": "graph", "targetHandle": "truth_graph"},
+            {"source": "structure", "target": "eval", "sourceHandle": "graph", "targetHandle": "graph"},
         ],
     )
 

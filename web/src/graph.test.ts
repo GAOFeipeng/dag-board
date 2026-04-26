@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as graphModule from './graph';
 import * as runStateModule from './runState';
-import { createDefaultWorkflow, toWorkflowPayload, wouldCreateCycle } from './graph';
+import { createDefaultWorkflow, toWorkflowPayload, workflowPayloadToCanvas, wouldCreateCycle } from './graph';
 
 type ValidationResult = {
   valid: boolean;
@@ -48,8 +48,29 @@ describe('workflow graph helpers', () => {
     expect(payload.nodes.filter((node) => node.type === 'evaluation_summary')).toHaveLength(1);
     expect(payload.edges.length).toBeGreaterThan(0);
     expect(payload.edges.some((edge) => edge.sourceHandle && edge.targetHandle)).toBe(true);
-    expect(payload.edges.filter((edge) => edge.targetHandle === 'pred_graph')).toHaveLength(3);
+    expect(payload.edges.filter((edge) => edge.targetHandle === 'graph' && edge.target.startsWith('eval-'))).toHaveLength(6);
+    expect(payload.edges.some((edge) => edge.sourceHandle === 'truth_graph' || edge.sourceHandle === 'result_graph' || edge.targetHandle === 'pred_graph')).toBe(false);
     expect(payload.edges.filter((edge) => edge.target === 'summary')).toHaveLength(3);
+  });
+
+  it('normalizes legacy truth/result graph handles when loading workflows', () => {
+    const canvas = workflowPayloadToCanvas({
+      name: 'legacy',
+      nodes: [
+        { id: 'data', type: 'data_generator', position: { x: 0, y: 0 }, data: { label: 'Data' } },
+        { id: 'algo', type: 'algorithm', position: { x: 0, y: 0 }, data: { label: 'Algo' } },
+        { id: 'eval', type: 'evaluation', position: { x: 0, y: 0 }, data: { label: 'Eval' } },
+      ],
+      edges: [
+        { id: 'truth', source: 'data', target: 'eval', sourceHandle: 'truth_graph', targetHandle: 'truth_graph' },
+        { id: 'pred', source: 'algo', target: 'eval', sourceHandle: 'result_graph', targetHandle: 'pred_graph' },
+      ],
+    });
+
+    expect(canvas.edges).toEqual([
+      expect.objectContaining({ id: 'truth', sourceHandle: 'graph', targetHandle: 'graph' }),
+      expect.objectContaining({ id: 'pred', sourceHandle: 'graph', targetHandle: 'graph' }),
+    ]);
   });
 
   it('preserves per-node preview collapse state in workflow payloads', () => {

@@ -584,7 +584,7 @@ function getEvaluationInputStatus(
 ): NodeInputStatus {
   const mode = String(node.data.params?.mode ?? 'compare');
   if (mode === 'bic') {
-    const graphCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['truth_graph', 'pred_graph']);
+    const graphCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['graph', 'truth_graph', 'pred_graph']);
     const dataCount = countIncomingByKind(incoming, nodes, nodeTypes, 'data', ['data']);
     const missing: string[] = [];
     if (graphCount < 1) missing.push('graph');
@@ -594,19 +594,27 @@ function getEvaluationInputStatus(
 
   const hasTargetHandles = incoming.some((edge) => Boolean(edge.targetHandle));
   if (hasTargetHandles) {
-    const truthCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['truth_graph']);
-    const predCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['pred_graph']);
-    const missing: string[] = [];
-    if (truthCount < 1) missing.push('truth_graph');
-    if (predCount < 1) missing.push('pred_graph');
-    return { required: 2, satisfied: Math.min(truthCount, 1) + Math.min(predCount, 1), missing };
+    const legacyTruthCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['truth_graph']);
+    const legacyPredCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['pred_graph']);
+    if (legacyTruthCount || legacyPredCount) {
+      const missing: string[] = [];
+      if (legacyTruthCount < 1) missing.push('truth_graph');
+      if (legacyPredCount < 1) missing.push('pred_graph');
+      return { required: 2, satisfied: Math.min(legacyTruthCount, 1) + Math.min(legacyPredCount, 1), missing };
+    }
+    const graphCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like', ['graph']);
+    return {
+      required: 2,
+      satisfied: Math.min(graphCount, 2),
+      missing: graphCount >= 2 ? [] : [`graph x${2 - graphCount}`],
+    };
   }
 
   const graphCount = countIncomingByKind(incoming, nodes, nodeTypes, 'graph_like');
   return {
     required: 2,
     satisfied: Math.min(graphCount, 2),
-    missing: graphCount >= 2 ? [] : ['truth_graph', 'pred_graph'].slice(graphCount),
+    missing: graphCount >= 2 ? [] : [`graph x${2 - graphCount}`],
   };
 }
 

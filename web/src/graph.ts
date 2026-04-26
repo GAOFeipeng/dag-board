@@ -140,18 +140,18 @@ export function createDefaultWorkflow(): { nodes: StudioNode[]; edges: Edge[] } 
     defaultEdge('data-pc', 'data', 'pc', 'data', 'data'),
     defaultEdge('data-ges', 'data', 'ges', 'data', 'data'),
     defaultEdge('data-notears', 'data', 'notears', 'data', 'data'),
-    defaultEdge('truth-eval-pc', 'data', 'eval-pc', 'truth_graph', 'truth_graph'),
-    defaultEdge('truth-eval-ges', 'data', 'eval-ges', 'truth_graph', 'truth_graph'),
-    defaultEdge('truth-eval-notears', 'data', 'eval-notears', 'truth_graph', 'truth_graph'),
-    defaultEdge('pc-eval-pc', 'pc', 'eval-pc', 'result_graph', 'pred_graph'),
-    defaultEdge('ges-eval-ges', 'ges', 'eval-ges', 'result_graph', 'pred_graph'),
-    defaultEdge('notears-eval-notears', 'notears', 'eval-notears', 'result_graph', 'pred_graph'),
+    defaultEdge('data-graph-eval-pc', 'data', 'eval-pc', 'graph', 'graph'),
+    defaultEdge('data-graph-eval-ges', 'data', 'eval-ges', 'graph', 'graph'),
+    defaultEdge('data-graph-eval-notears', 'data', 'eval-notears', 'graph', 'graph'),
+    defaultEdge('pc-graph-eval-pc', 'pc', 'eval-pc', 'graph', 'graph'),
+    defaultEdge('ges-graph-eval-ges', 'ges', 'eval-ges', 'graph', 'graph'),
+    defaultEdge('notears-graph-eval-notears', 'notears', 'eval-notears', 'graph', 'graph'),
     defaultEdge('data-view-pc', 'data', 'view-pc', 'data', 'data'),
     defaultEdge('data-view-ges', 'data', 'view-ges', 'data', 'data'),
     defaultEdge('data-view-notears', 'data', 'view-notears', 'data', 'data'),
-    defaultEdge('pc-view-pc', 'pc', 'view-pc', 'result_graph', 'graph'),
-    defaultEdge('ges-view-ges', 'ges', 'view-ges', 'result_graph', 'graph'),
-    defaultEdge('notears-view-notears', 'notears', 'view-notears', 'result_graph', 'graph'),
+    defaultEdge('pc-view-pc', 'pc', 'view-pc', 'graph', 'graph'),
+    defaultEdge('ges-view-ges', 'ges', 'view-ges', 'graph', 'graph'),
+    defaultEdge('notears-view-notears', 'notears', 'view-notears', 'graph', 'graph'),
     defaultEdge('eval-pc-view-pc', 'eval-pc', 'view-pc', 'evaluation', 'evaluation'),
     defaultEdge('eval-ges-view-ges', 'eval-ges', 'view-ges', 'evaluation', 'evaluation'),
     defaultEdge('eval-notears-view-notears', 'eval-notears', 'view-notears', 'evaluation', 'evaluation'),
@@ -195,12 +195,19 @@ export function workflowPayloadToCanvas(workflow: WorkflowPayload): { nodes: Stu
       id: edge.id ?? `${edge.source}-${edge.target}`,
       source: edge.source,
       target: edge.target,
-      sourceHandle: edge.sourceHandle ?? null,
-      targetHandle: edge.targetHandle ?? null,
+      sourceHandle: normalizeGraphHandle(edge.sourceHandle),
+      targetHandle: normalizeGraphHandle(edge.targetHandle),
       className: 'workflow-edge edge-ready',
       markerEnd: { type: MarkerType.ArrowClosed },
       interactionWidth: 24,
       reconnectable: true,
     })),
   };
+}
+
+function normalizeGraphHandle(handle: string | null | undefined): string | null {
+  if (handle === 'truth_graph' || handle === 'pred_graph' || handle === 'result_graph') {
+    return 'graph';
+  }
+  return handle ?? null;
 }

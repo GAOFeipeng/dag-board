@@ -12,6 +12,8 @@ export const resources = {
         autoLayout: 'Auto layout',
         undo: 'Undo',
         redo: 'Redo',
+        copyWorkflow: 'Copy workflow',
+        workflowCopied: 'Workflow JSON copied to clipboard.',
         preflightFailed: 'Workflow is not ready to run.',
         connectFailed: 'Connection failed.',
         connectHint: 'Drag from an output port to a compatible input port.',
@@ -110,7 +112,6 @@ export const resources = {
             ports: {
               graph: { label: 'Graph' },
               data: { label: 'Data' },
-              truth_graph: { label: 'Truth Graph' },
             },
           },
           algorithm: {
@@ -131,7 +132,7 @@ export const resources = {
             },
             ports: {
               data: { label: 'Data' },
-              result_graph: { label: 'Result Graph' },
+              graph: { label: 'Graph' },
             },
           },
           graph_view: {
@@ -151,7 +152,7 @@ export const resources = {
           },
           evaluation: {
             label: 'Structure Evaluation',
-            description: 'Compare two structures, or score one structure with data using BIC.',
+            description: 'Compare two causal graphs, or score one graph with data using BIC.',
             fields: {
               mode: { label: 'Mode' },
               metrics: { label: 'Metrics' },
@@ -159,8 +160,7 @@ export const resources = {
               graph_space: { label: 'Graph Space' },
             },
             ports: {
-              truth_graph: { label: 'Truth Graph' },
-              pred_graph: { label: 'Pred Graph' },
+              graph: { label: 'Graph' },
               data: { label: 'Data' },
               evaluation: { label: 'Evaluation' },
             },
@@ -195,6 +195,8 @@ export const resources = {
         autoLayout: '自动整理',
         undo: '撤销',
         redo: '重做',
+        copyWorkflow: '复制工作流',
+        workflowCopied: '工作流 JSON 已复制到剪贴板。',
         preflightFailed: '工作流尚未准备好运行。',
         connectFailed: '连接失败。',
         connectHint: '从输出端口拖到兼容的输入端口。',
@@ -293,7 +295,6 @@ export const resources = {
             ports: {
               graph: { label: '图' },
               data: { label: '数据' },
-              truth_graph: { label: '真实图' },
             },
           },
           algorithm: {
@@ -314,7 +315,7 @@ export const resources = {
             },
             ports: {
               data: { label: '数据' },
-              result_graph: { label: '结果图' },
+              graph: { label: '结构图' },
             },
           },
           graph_view: {
@@ -334,7 +335,7 @@ export const resources = {
           },
           evaluation: {
             label: '结构评价',
-            description: '比较两个结构，或用 BIC 基于数据评价单个结构。',
+            description: '比较两个结构图，或用 BIC 基于数据评价单个结构图。',
             fields: {
               mode: { label: '模式' },
               metrics: { label: '指标' },
@@ -342,8 +343,7 @@ export const resources = {
               graph_space: { label: '图空间' },
             },
             ports: {
-              truth_graph: { label: '真实图' },
-              pred_graph: { label: '预测图' },
+              graph: { label: '结构图' },
               data: { label: '数据' },
               evaluation: { label: '评估' },
             },
@@ -378,6 +378,8 @@ export const resources = {
         autoLayout: '自動整列',
         undo: '元に戻す',
         redo: 'やり直す',
+        copyWorkflow: 'ワークフローをコピー',
+        workflowCopied: 'ワークフロー JSON をクリップボードにコピーしました。',
         preflightFailed: 'ワークフローはまだ実行できません。',
         connectFailed: '接続に失敗しました。',
         connectHint: '出力ポートから互換性のある入力ポートへドラッグします。',
@@ -476,7 +478,6 @@ export const resources = {
             ports: {
               graph: { label: 'グラフ' },
               data: { label: 'データ' },
-              truth_graph: { label: '真のグラフ' },
             },
           },
           algorithm: {
@@ -497,7 +498,7 @@ export const resources = {
             },
             ports: {
               data: { label: 'データ' },
-              result_graph: { label: '結果グラフ' },
+              graph: { label: '構造グラフ' },
             },
           },
           graph_view: {
@@ -517,7 +518,7 @@ export const resources = {
           },
           evaluation: {
             label: '構造評価',
-            description: '2 つの構造を比較するか、データに基づいて BIC で 1 つの構造を評価します。',
+            description: '2 つの構造グラフを比較するか、データに基づいて BIC で 1 つの構造グラフを評価します。',
             fields: {
               mode: { label: 'モード' },
               metrics: { label: '指標' },
@@ -525,8 +526,7 @@ export const resources = {
               graph_space: { label: 'グラフ空間' },
             },
             ports: {
-              truth_graph: { label: '真のグラフ' },
-              pred_graph: { label: '予測グラフ' },
+              graph: { label: '構造グラフ' },
               data: { label: 'データ' },
               evaluation: { label: '評価' },
             },

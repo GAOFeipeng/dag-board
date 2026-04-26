@@ -476,7 +476,7 @@ class WorkflowExecutor:
                     graph_count = sum(
                         1
                         for edge, parent in zip(input_edges, parents)
-                        if edge.target_handle in {"truth_graph", "pred_graph"}
+                        if edge.target_handle in {"graph", "truth_graph", "pred_graph"}
                         and "graph_like" in _context_kinds(parent)
                     )
                 else:
@@ -490,19 +490,29 @@ class WorkflowExecutor:
                 return None
 
             if handles:
-                missing = []
-                for port_id in ["truth_graph", "pred_graph"]:
-                    has_port = any(
-                        edge.target_handle == port_id and "graph_like" in _context_kinds(parent)
+                legacy_truth_pred = {"truth_graph", "pred_graph"} <= handles
+                if legacy_truth_pred:
+                    missing = []
+                    for port_id in ["truth_graph", "pred_graph"]:
+                        has_port = any(
+                            edge.target_handle == port_id and "graph_like" in _context_kinds(parent)
+                            for edge, parent in zip(input_edges, parents)
+                        )
+                        if not has_port:
+                            missing.append(port_id)
+                    if missing:
+                        return f"Evaluation compare mode requires two graph inputs; missing: {', '.join(missing)}."
+                else:
+                    graph_count = sum(
+                        1
                         for edge, parent in zip(input_edges, parents)
+                        if edge.target_handle in {"graph", "truth_graph", "pred_graph"}
+                        and "graph_like" in _context_kinds(parent)
                     )
-                    if not has_port:
-                        missing.append(port_id)
-                if missing:
-                    return f"Evaluation compare mode requires two graph-like inputs; missing: {', '.join(missing)}."
+                    if graph_count < 2:
+                        return f"Evaluation compare mode requires two graph inputs; missing: graph x{2 - graph_count}."
             elif graph_like_count < 2:
-                missing = ["truth_graph", "pred_graph"][graph_like_count:]
-                return f"Evaluation compare mode requires two graph-like inputs; missing: {', '.join(missing)}."
+                return f"Evaluation compare mode requires two graph inputs; missing: graph x{2 - graph_like_count}."
             return None
 
         missing: list[str] = []
@@ -1061,11 +1071,11 @@ class WorkflowExecutor:
         truth = truth or next((graph for graph in graph_likes if graph.kind == "graph"), None)
         prediction = prediction or next((graph for graph in graph_likes if graph is not truth), None)
         if truth is None or prediction is None:
-            raise WorkflowValidationError("Evaluation compare mode requires two graph-like inputs: truth_graph and pred_graph.")
+            raise WorkflowValidationError("Evaluation compare mode requires two graph inputs.")
         return truth, prediction
 
     def _select_bic_graph(self, graph_likes: list[GraphLike]) -> GraphLike:
-        graph = next((item for item in graph_likes if item.port_id in {"truth_graph", "pred_graph"}), None)
+        graph = next((item for item in graph_likes if item.port_id in {"graph", "truth_graph", "pred_graph"}), None)
         graph = graph or next((item for item in graph_likes if item.kind == "algorithm_result"), None)
         graph = graph or next((item for item in graph_likes if item.kind == "graph"), None)
         graph = graph or next((item for item in graph_likes if item.kind == "data"), None)

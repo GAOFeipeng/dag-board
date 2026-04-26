@@ -215,7 +215,7 @@ describe('connection preflight', () => {
         input_ports: [{ id: 'graph', label: 'Graph', kind: 'graph', required: true }],
         output_ports: [
           { id: 'data', label: 'Data', kind: 'data' },
-          { id: 'truth_graph', label: 'Truth', kind: 'graph_like' },
+          { id: 'graph', label: 'Graph', kind: 'graph_like' },
         ],
       },
       {
@@ -226,8 +226,7 @@ describe('connection preflight', () => {
         outputs: ['evaluation'],
         fields: [],
         input_ports: [
-          { id: 'truth_graph', label: 'Truth', kind: 'graph_like', required: true },
-          { id: 'pred_graph', label: 'Pred', kind: 'graph_like', required: true },
+          { id: 'graph', label: 'Graph', kind: 'graph_like', required: true, min_count: 2, max_count: 2 },
           { id: 'data', label: 'Data', kind: 'data', required: false, min_count: 0 },
         ],
         output_ports: [{ id: 'evaluation', label: 'Evaluation', kind: 'evaluation' }],
@@ -235,11 +234,11 @@ describe('connection preflight', () => {
     ];
     const compareEdges: StudioEdge[] = [
       { id: 'structure-data', source: 'structure', target: 'data', sourceHandle: 'graph', targetHandle: 'graph' },
-      { id: 'structure-eval', source: 'structure', target: 'eval', sourceHandle: 'graph', targetHandle: 'truth_graph' },
+      { id: 'structure-eval', source: 'structure', target: 'eval', sourceHandle: 'graph', targetHandle: 'graph' },
     ];
 
-    expect(getNodeInputStatus(typedNodes[2], typedNodes, compareEdges, nodeTypes).missing).toEqual(['pred_graph']);
-    expect(validateWorkflowInputs(typedNodes, compareEdges, nodeTypes)[0]).toContain('pred_graph');
+    expect(getNodeInputStatus(typedNodes[2], typedNodes, compareEdges, nodeTypes).missing).toEqual(['graph x1']);
+    expect(validateWorkflowInputs(typedNodes, compareEdges, nodeTypes)[0]).toContain('graph x1');
 
     const bicNodes = typedNodes.map((item) =>
       item.id === 'eval' ? { ...item, data: { ...item.data, params: { mode: 'bic' } } } : item,

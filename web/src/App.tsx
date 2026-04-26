@@ -22,7 +22,7 @@ import {
   type NodeTypes,
 } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
-import { Eye, EyeOff, FolderOpen, LayoutGrid, Link2, Play, Redo2, RotateCcw, Save, Undo2 } from 'lucide-react';
+import { Copy, Eye, EyeOff, FolderOpen, LayoutGrid, Link2, Play, Redo2, RotateCcw, Save, Undo2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { api } from './api';
 import {
@@ -433,6 +433,12 @@ function StudioCanvas() {
     }
   }, [edges, nodes, workflowsQuery]);
 
+  const copyWorkflow = useCallback(async () => {
+    const payload = JSON.stringify(toWorkflowPayload(nodes as StudioNodeType[], edges), null, 2);
+    await navigator.clipboard.writeText(payload);
+    setValidationError(t('app.workflowCopied'));
+  }, [edges, nodes, t]);
+
   const resetDefaultWorkflow = useCallback(() => {
     const next = createDefaultWorkflow();
     commitCanvas(next, { deletedNodeIds: (nodes as StudioNodeType[]).map((node) => node.id), selectNodeId: null });
@@ -819,6 +825,10 @@ function StudioCanvas() {
             <button onClick={redoCanvas} title={t('app.redo')}>
               <Redo2 size={16} />
               {t('app.redo')}
+            </button>
+            <button onClick={() => void copyWorkflow()} title={t('app.copyWorkflow')}>
+              <Copy size={16} />
+              {t('app.copyWorkflow')}
             </button>
             <button onClick={toggleGlobalPreviews} title={showNodePreviews ? t('app.hidePreviews') : t('app.showPreviews')}>
               {showNodePreviews ? <Eye size={16} /> : <EyeOff size={16} />}
