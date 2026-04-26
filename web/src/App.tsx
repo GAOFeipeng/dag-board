@@ -16,7 +16,7 @@ import {
   type NodeTypes,
 } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
-import { Eye, EyeOff, FolderOpen, Play, Save } from 'lucide-react';
+import { Eye, EyeOff, FolderOpen, Play, RotateCcw, Save } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { api } from './api';
 import { GraphPreview } from './components/GraphPreview';
@@ -269,6 +269,17 @@ function StudioCanvas() {
     [connectEvents, edges, localizedNodeTypes, nodes, runsQuery, setEdges, setNodes, startRun, t, workflowsQuery],
   );
 
+  const resetDefaultWorkflow = useCallback(() => {
+    const next = createDefaultWorkflow();
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setSelectedNodeId(null);
+    setSelectedWorkflowId(null);
+    setSelectedRunId(null);
+    setValidationError(null);
+    resetRun();
+  }, [resetRun, setEdges, setNodes, setSelectedNodeId]);
+
   const onConnect = useCallback(
     (connection: Connection) => {
       const result = preflightConnection({
@@ -385,6 +396,10 @@ function StudioCanvas() {
             <button onClick={() => setBrowserOpen((value) => !value)} title={t('app.browser')}>
               <FolderOpen size={16} />
               {t('app.browser')}
+            </button>
+            <button onClick={resetDefaultWorkflow} title={t('app.defaultWorkflow')}>
+              <RotateCcw size={16} />
+              {t('app.defaultWorkflow')}
             </button>
             <button onClick={toggleGlobalPreviews} title={showNodePreviews ? t('app.hidePreviews') : t('app.showPreviews')}>
               {showNodePreviews ? <Eye size={16} /> : <EyeOff size={16} />}

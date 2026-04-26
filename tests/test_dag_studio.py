@@ -145,6 +145,69 @@ def test_workflow_executor_smoke(tmp_path: Path) -> None:
     assert records["view"].outputs["graph_view"]["edges"]
 
 
+def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:
+    storage = LocalStudioStorage(tmp_path)
+    _run_id, run_dir = storage.create_run_dir("multi-algorithm")
+    workflow = WorkflowDefinition(
+        name="multi algorithm compare",
+        nodes=[
+            {
+                "id": "structure",
+                "type": "structure_generator",
+                "position": {"x": 0, "y": 0},
+                "data": {"params": {"d": 5, "s0": 4, "graph_type": "ER", "seed": 17}},
+            },
+            {
+                "id": "data",
+                "type": "data_generator",
+                "position": {"x": 1, "y": 0},
+                "data": {"params": {"n_samples": 35, "sem_type": "gauss", "seed": 17}},
+            },
+            {
+                "id": "algo_pc",
+                "type": "algorithm",
+                "position": {"x": 2, "y": -1},
+                "data": {"params": {"algorithm_id": "PC", "alpha": 0.05, "w_threshold": 0.2, "seed": 17}},
+            },
+            {
+                "id": "algo_ges",
+                "type": "algorithm",
+                "position": {"x": 2, "y": 1},
+                "data": {"params": {"algorithm_id": "GES", "criterion": "bic", "w_threshold": 0.2, "seed": 17}},
+            },
+            {
+                "id": "eval_pc",
+                "type": "evaluation",
+                "position": {"x": 3, "y": -1},
+                "data": {"params": {"mode": "compare", "threshold": 0.2}},
+            },
+            {
+                "id": "eval_ges",
+                "type": "evaluation",
+                "position": {"x": 3, "y": 1},
+                "data": {"params": {"mode": "compare", "threshold": 0.2}},
+            },
+        ],
+        edges=[
+            {"id": "structure-data", "source": "structure", "target": "data", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"id": "data-pc", "source": "data", "target": "algo_pc", "sourceHandle": "data", "targetHandle": "data"},
+            {"id": "data-ges", "source": "data", "target": "algo_ges", "sourceHandle": "data", "targetHandle": "data"},
+            {"id": "truth-pc", "source": "data", "target": "eval_pc", "sourceHandle": "truth_graph", "targetHandle": "truth_graph"},
+            {"id": "truth-ges", "source": "data", "target": "eval_ges", "sourceHandle": "truth_graph", "targetHandle": "truth_graph"},
+            {"id": "pc-eval", "source": "algo_pc", "target": "eval_pc", "sourceHandle": "result_graph", "targetHandle": "pred_graph"},
+            {"id": "ges-eval", "source": "algo_ges", "target": "eval_ges", "sourceHandle": "result_graph", "targetHandle": "pred_graph"},
+        ],
+    )
+
+    records = WorkflowExecutor(storage, run_dir).execute(workflow)
+
+    assert {record.status for record in records.values()} == {"success"}
+    assert records["algo_pc"].outputs["algorithm_result"]["algorithm"] == "PC"
+    assert records["algo_ges"].outputs["algorithm_result"]["algorithm"] == "GES"
+    assert "shd" in records["eval_pc"].outputs["evaluation"]["metrics"]
+    assert "shd" in records["eval_ges"].outputs["evaluation"]["metrics"]
+
+
 def test_evaluation_compare_accepts_two_graph_like_inputs(tmp_path: Path) -> None:
     storage = LocalStudioStorage(tmp_path)
     _run_id, run_dir = storage.create_run_dir("compare")

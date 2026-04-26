@@ -38,8 +38,15 @@ describe('workflow graph helpers', () => {
     const workflow = createDefaultWorkflow();
     const payload = toWorkflowPayload(workflow.nodes, workflow.edges);
     expect(payload.nodes.map((node) => node.type)).toContain('structure_generator');
+    expect(workflow.nodes.filter((node) => node.data.nodeType === 'algorithm').map((node) => node.data.params.algorithm_id)).toEqual([
+      'PC',
+      'GES',
+      'Notears',
+    ]);
+    expect(payload.nodes.filter((node) => node.type === 'evaluation')).toHaveLength(3);
     expect(payload.edges.length).toBeGreaterThan(0);
     expect(payload.edges.some((edge) => edge.sourceHandle && edge.targetHandle)).toBe(true);
+    expect(payload.edges.filter((edge) => edge.targetHandle === 'pred_graph')).toHaveLength(3);
   });
 
   it('preserves per-node preview collapse state in workflow payloads', () => {

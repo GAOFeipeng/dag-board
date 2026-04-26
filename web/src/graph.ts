@@ -1,4 +1,4 @@
-import type { Edge, Node } from '@xyflow/react';
+import { MarkerType, type Edge, type Node } from '@xyflow/react';
 import type { NodeTypeDefinition, StudioEdge, StudioNode, WorkflowPayload } from './types';
 
 export function defaultParams(definition: NodeTypeDefinition): Record<string, unknown> {
@@ -65,44 +65,104 @@ export function createDefaultWorkflow(): { nodes: StudioNode[]; edges: Edge[] } 
     {
       id: 'structure',
       type: 'studio',
-      position: { x: 40, y: 80 },
-      data: { label: 'Structure', nodeType: 'structure_generator', params: { d: 8, s0: 12, graph_type: 'ER', seed: 42 } },
+      position: { x: 40, y: 210 },
+      data: { label: 'Structure', nodeType: 'structure_generator', params: { d: 6, s0: 7, graph_type: 'ER', seed: 42 } },
     },
     {
       id: 'data',
       type: 'studio',
-      position: { x: 300, y: 80 },
-      data: { label: 'Data', nodeType: 'data_generator', params: { n_samples: 120, sem_type: 'gauss', sem_noise: 1, seed: 42, standardize: true } },
+      position: { x: 320, y: 210 },
+      data: { label: 'Data', nodeType: 'data_generator', params: { n_samples: 100, sem_type: 'gauss', sem_noise: 1, seed: 42, standardize: true } },
     },
     {
       id: 'pc',
       type: 'studio',
-      position: { x: 560, y: 40 },
-      data: { label: 'PC', nodeType: 'algorithm', params: { algorithm_id: 'PC', alpha: 0.05, variant: 'original', w_threshold: 0.3, seed: 42 } },
+      position: { x: 600, y: 20 },
+      data: { label: 'PC Baseline', nodeType: 'algorithm', params: { algorithm_id: 'PC', alpha: 0.05, variant: 'original', w_threshold: 0.3, seed: 42 } },
     },
     {
-      id: 'evaluate',
+      id: 'ges',
       type: 'studio',
-      position: { x: 820, y: 80 },
-      data: { label: 'Evaluate', nodeType: 'evaluation', params: { mode: 'compare', threshold: 0.3, graph_space: 'dag' } },
+      position: { x: 600, y: 240 },
+      data: { label: 'GES Baseline', nodeType: 'algorithm', params: { algorithm_id: 'GES', criterion: 'bic', w_threshold: 0.3, seed: 42 } },
     },
     {
-      id: 'view',
+      id: 'notears',
       type: 'studio',
-      position: { x: 1080, y: 80 },
-      data: { label: 'Graph View', nodeType: 'graph_view', params: { compare_mode: 'overlay', threshold: 0.3, top_k: 200 } },
+      position: { x: 600, y: 460 },
+      data: { label: 'NOTEARS Baseline', nodeType: 'algorithm', params: { algorithm_id: 'Notears', lambda1: 0.03, max_iter: 20, w_threshold: 0.3, seed: 42 } },
+    },
+    {
+      id: 'eval-pc',
+      type: 'studio',
+      position: { x: 900, y: 20 },
+      data: { label: 'Evaluate PC', nodeType: 'evaluation', params: { mode: 'compare', threshold: 0.3, graph_space: 'dag' } },
+    },
+    {
+      id: 'eval-ges',
+      type: 'studio',
+      position: { x: 900, y: 240 },
+      data: { label: 'Evaluate GES', nodeType: 'evaluation', params: { mode: 'compare', threshold: 0.3, graph_space: 'dag' } },
+    },
+    {
+      id: 'eval-notears',
+      type: 'studio',
+      position: { x: 900, y: 460 },
+      data: { label: 'Evaluate NOTEARS', nodeType: 'evaluation', params: { mode: 'compare', threshold: 0.3, graph_space: 'dag' } },
+    },
+    {
+      id: 'view-pc',
+      type: 'studio',
+      position: { x: 1200, y: 20 },
+      data: { label: 'PC Graph View', nodeType: 'graph_view', params: { compare_mode: 'overlay', threshold: 0.3, top_k: 200 } },
+    },
+    {
+      id: 'view-ges',
+      type: 'studio',
+      position: { x: 1200, y: 240 },
+      data: { label: 'GES Graph View', nodeType: 'graph_view', params: { compare_mode: 'overlay', threshold: 0.3, top_k: 200 } },
+    },
+    {
+      id: 'view-notears',
+      type: 'studio',
+      position: { x: 1200, y: 460 },
+      data: { label: 'NOTEARS Graph View', nodeType: 'graph_view', params: { compare_mode: 'overlay', threshold: 0.3, top_k: 200 } },
     },
   ];
   const edges: Edge[] = [
-    { id: 'structure-data', source: 'structure', target: 'data', sourceHandle: 'graph', targetHandle: 'graph' },
-    { id: 'data-pc', source: 'data', target: 'pc', sourceHandle: 'data', targetHandle: 'data' },
-    { id: 'data-evaluate', source: 'data', target: 'evaluate', sourceHandle: 'truth_graph', targetHandle: 'truth_graph' },
-    { id: 'pc-evaluate', source: 'pc', target: 'evaluate', sourceHandle: 'result_graph', targetHandle: 'pred_graph' },
-    { id: 'data-view', source: 'data', target: 'view', sourceHandle: 'data', targetHandle: 'data' },
-    { id: 'pc-view', source: 'pc', target: 'view', sourceHandle: 'result_graph', targetHandle: 'graph' },
-    { id: 'evaluate-view', source: 'evaluate', target: 'view', sourceHandle: 'evaluation', targetHandle: 'evaluation' },
+    defaultEdge('structure-data', 'structure', 'data', 'graph', 'graph'),
+    defaultEdge('data-pc', 'data', 'pc', 'data', 'data'),
+    defaultEdge('data-ges', 'data', 'ges', 'data', 'data'),
+    defaultEdge('data-notears', 'data', 'notears', 'data', 'data'),
+    defaultEdge('truth-eval-pc', 'data', 'eval-pc', 'truth_graph', 'truth_graph'),
+    defaultEdge('truth-eval-ges', 'data', 'eval-ges', 'truth_graph', 'truth_graph'),
+    defaultEdge('truth-eval-notears', 'data', 'eval-notears', 'truth_graph', 'truth_graph'),
+    defaultEdge('pc-eval-pc', 'pc', 'eval-pc', 'result_graph', 'pred_graph'),
+    defaultEdge('ges-eval-ges', 'ges', 'eval-ges', 'result_graph', 'pred_graph'),
+    defaultEdge('notears-eval-notears', 'notears', 'eval-notears', 'result_graph', 'pred_graph'),
+    defaultEdge('data-view-pc', 'data', 'view-pc', 'data', 'data'),
+    defaultEdge('data-view-ges', 'data', 'view-ges', 'data', 'data'),
+    defaultEdge('data-view-notears', 'data', 'view-notears', 'data', 'data'),
+    defaultEdge('pc-view-pc', 'pc', 'view-pc', 'result_graph', 'graph'),
+    defaultEdge('ges-view-ges', 'ges', 'view-ges', 'result_graph', 'graph'),
+    defaultEdge('notears-view-notears', 'notears', 'view-notears', 'result_graph', 'graph'),
+    defaultEdge('eval-pc-view-pc', 'eval-pc', 'view-pc', 'evaluation', 'evaluation'),
+    defaultEdge('eval-ges-view-ges', 'eval-ges', 'view-ges', 'evaluation', 'evaluation'),
+    defaultEdge('eval-notears-view-notears', 'eval-notears', 'view-notears', 'evaluation', 'evaluation'),
   ];
   return { nodes, edges };
+}
+
+function defaultEdge(id: string, source: string, target: string, sourceHandle: string, targetHandle: string): Edge {
+  return {
+    id,
+    source,
+    target,
+    sourceHandle,
+    targetHandle,
+    className: 'workflow-edge edge-ready',
+    markerEnd: { type: MarkerType.ArrowClosed },
+  };
 }
 
 export function workflowPayloadToCanvas(workflow: WorkflowPayload): { nodes: StudioNode[]; edges: StudioEdge[] } {
