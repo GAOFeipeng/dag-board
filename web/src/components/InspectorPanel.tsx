@@ -87,11 +87,13 @@ export function InspectorPanel({
   nodeTypes,
   algorithms,
   onUpdate,
+  onRename,
 }: {
   selectedNode: StudioNode | null;
   nodeTypes: NodeTypeDefinition[];
   algorithms: AlgorithmRow[];
   onUpdate: (nodeId: string, params: Record<string, unknown>) => void;
+  onRename?: (nodeId: string, label: string) => void;
 }) {
   const { t } = useTranslation();
   const definition = selectedNode ? nodeTypes.find((item) => item.id === selectedNode.data.nodeType) : null;
@@ -107,7 +109,13 @@ export function InspectorPanel({
         <div className="empty-state">{t('panels.selectNode')}</div>
       ) : (
         <div className="inspector-body">
-          <div className="selected-node-title">{selectedNode.data.label}</div>
+          <label className="field-row">
+            <span>{t('panels.nodeName')}</span>
+            <input
+              value={selectedNode.data.label}
+              onChange={(event) => onRename?.(selectedNode.id, event.target.value)}
+            />
+          </label>
           <p>{definition.description}</p>
           {definition.fields.map((field) => (
             <label key={field.name} className="field-row">

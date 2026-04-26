@@ -3,8 +3,8 @@ import '@xyflow/react/dist/style.css';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Background,
+  ConnectionMode,
   Controls,
-  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   addEdge,
@@ -19,7 +19,7 @@ import {
   type NodeTypes,
 } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
-import { Eye, EyeOff, FolderOpen, Play, RotateCcw, Save } from 'lucide-react';
+import { Eye, EyeOff, FolderOpen, Link2, Play, RotateCcw, Save } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { api } from './api';
 import { GraphPreview } from './components/GraphPreview';
@@ -351,6 +351,31 @@ function StudioCanvas() {
     [edges, localizedNodeTypes, nodes, setEdges],
   );
 
+  const restoreDefaultEdges = useCallback(() => {
+    const candidateEdges = createDefaultWorkflow().edges;
+    const currentNodes = nodes as StudioNodeType[];
+    const nodeIds = new Set(currentNodes.map((node) => node.id));
+    setEdges((current) => {
+      const next = [...current];
+      for (const edge of candidateEdges) {
+        if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+          continue;
+        }
+        const result = preflightConnection({
+          nodes: currentNodes,
+          edges: next as StudioEdge[],
+          connection: edge,
+          nodeTypes: localizedNodeTypes,
+          enforceTypeCompatibility: true,
+        });
+        if (result.valid) {
+          next.push(editableEdgeDefaults({ ...edge }));
+        }
+      }
+      return next.length === current.length ? current : next;
+    });
+  }, [localizedNodeTypes, nodes, setEdges]);
+
   const onReconnect = useCallback<OnReconnect<Edge>>(
     (oldEdge, newConnection) => {
       const result = preflightConnection({
@@ -477,6 +502,10 @@ function StudioCanvas() {
               <RotateCcw size={16} />
               {t('app.defaultWorkflow')}
             </button>
+            <button onClick={restoreDefaultEdges} title={t('app.restoreEdges')}>
+              <Link2 size={16} />
+              {t('app.restoreEdges')}
+            </button>
             <button onClick={toggleGlobalPreviews} title={showNodePreviews ? t('app.hidePreviews') : t('app.showPreviews')}>
               {showNodePreviews ? <Eye size={16} /> : <EyeOff size={16} />}
               {showNodePreviews ? t('app.previewsOn') : t('app.previewsOff')}
@@ -521,6 +550,9 @@ function StudioCanvas() {
             onConnect={onConnect}
             onReconnect={onReconnect}
             defaultEdgeOptions={defaultEdgeOptions}
+            connectionMode={ConnectionMode.Loose}
+            connectionRadius={36}
+            connectOnClick
             edgesReconnectable
             reconnectRadius={12}
             elevateEdgesOnSelect
@@ -559,7 +591,6 @@ function StudioCanvas() {
           >
             <Background />
             <Controls />
-            <MiniMap pannable zoomable />
           </ReactFlow>
           {contextMenu && contextMenuNode ? (
             <NodeContextMenu
@@ -616,6 +647,11 @@ function StudioCanvas() {
         nodeTypes={localizedNodeTypes}
         algorithms={algorithmsQuery.data ?? []}
         onUpdate={updateParams}
+        onRename={(nodeId, label) => {
+          setNodes((current) =>
+            current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, label } } : node)),
+          );
+        }}
       />
     </div>
   );

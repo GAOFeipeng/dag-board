@@ -8,6 +8,7 @@ export const resources = {
         runToNode: 'Run to this node',
         browser: 'Browser',
         defaultWorkflow: 'Default workflow',
+        restoreEdges: 'Restore links',
         preflightFailed: 'Workflow is not ready to run.',
         showPreviews: 'Show node previews',
         hidePreviews: 'Hide node previews',
@@ -30,6 +31,7 @@ export const resources = {
       panels: {
         nodes: 'Nodes',
         inspector: 'Inspector',
+        nodeName: 'Node name',
         selectNode: 'Select a node to edit its parameters.',
         graphPreview: 'Graph Preview',
         outputPreview: 'Output Preview',
@@ -170,6 +172,7 @@ export const resources = {
         runToNode: '运行到此',
         browser: '浏览',
         defaultWorkflow: '默认工作流',
+        restoreEdges: '恢复连线',
         preflightFailed: '工作流尚未准备好运行。',
         showPreviews: '显示节点预览',
         hidePreviews: '隐藏节点预览',
@@ -192,6 +195,7 @@ export const resources = {
       panels: {
         nodes: '节点',
         inspector: '属性',
+        nodeName: '节点名称',
         selectNode: '选择一个节点以编辑参数。',
         graphPreview: '图预览',
         outputPreview: '输出预览',
@@ -330,6 +334,7 @@ export const resources = {
         runToNode: 'ここまで実行',
         browser: 'ブラウズ',
         defaultWorkflow: '既定ワークフロー',
+        restoreEdges: 'リンクを復元',
         preflightFailed: 'ワークフローはまだ実行できません。',
         showPreviews: 'ノードプレビューを表示',
         hidePreviews: 'ノードプレビューを非表示',
@@ -352,6 +357,7 @@ export const resources = {
       panels: {
         nodes: 'ノード',
         inspector: 'インスペクター',
+        nodeName: 'ノード名',
         selectNode: 'ノードを選択してパラメータを編集します。',
         graphPreview: 'グラフプレビュー',
         outputPreview: '出力プレビュー',

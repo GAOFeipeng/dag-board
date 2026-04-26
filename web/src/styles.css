@@ -420,23 +420,24 @@ button.primary:hover {
 }
 
 .node-handle {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
   border: 2px solid #edf2f4;
   background: var(--port-color, #80c7f4);
-  box-shadow: 0 0 0 3px rgba(17, 20, 22, 0.95), 0 0 0 5px color-mix(in srgb, var(--port-color, #80c7f4) 34%, transparent);
+  box-shadow: 0 0 0 4px rgba(17, 20, 22, 0.95), 0 0 0 7px color-mix(in srgb, var(--port-color, #80c7f4) 38%, transparent);
   cursor: crosshair;
+  pointer-events: all;
   transition: transform 120ms ease, box-shadow 120ms ease;
-  z-index: 5;
+  z-index: 10;
 }
 
 .node-port-row.target .node-handle {
-  left: -19px;
+  left: -22px;
   top: 50%;
 }
 
 .node-port-row.source .node-handle {
-  right: -19px;
+  right: -22px;
   top: 50%;
 }
 
