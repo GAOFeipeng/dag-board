@@ -182,7 +182,8 @@ def _artifact_refs_from_public(value: Any) -> list[dict]:
 def _context_kinds(context: NodeContext) -> set[str]:
     kind = str(context.public.get("kind", ""))
     kinds = {kind} if kind else set()
-    if kind in {"graph", "data", "algorithm_result"}:
+    has_data_graph = kind == "data" and ("W_true" in context.arrays or "B_true" in context.arrays)
+    if kind in {"graph", "algorithm_result"} or has_data_graph:
         kinds.add("graph")
         kinds.add("graph_like")
     return kinds
@@ -456,6 +457,8 @@ class WorkflowExecutor:
             return self._execute_structure(node)
         if node.type == "data_generator":
             return self._execute_data(node, parents)
+        if node.type == "data_combiner":
+            return self._execute_data_combiner(node, parents)
         if node.type == "algorithm":
             return self._execute_algorithm(node, parents)
         if node.type == "evaluation":
@@ -702,6 +705,119 @@ class WorkflowExecutor:
             arrays={"X": X, "B_true": B, "W_true": W},
             warnings=warnings,
         )
+
+    def _execute_data_combiner(self, node: WorkflowNode, parents: list[NodeContext]) -> NodeContext:
+        data_parents = [parent for parent in parents if parent.public.get("kind") == "data"]
+        if len(data_parents) < 2:
+            raise WorkflowValidationError("Data Combiner requires at least two data inputs.")
+
+        matrices = [np.asarray(parent.arrays["X"], dtype=float) for parent in data_parents]
+        if any(matrix.ndim != 2 for matrix in matrices):
+            raise WorkflowValidationError("Data Combiner only supports two-dimensional data matrices.")
+        n_features = int(matrices[0].shape[1])
+        mismatched = [index + 1 for index, matrix in enumerate(matrices) if int(matrix.shape[1]) != n_features]
+        if mismatched:
+            got = [int(matrix.shape[1]) for matrix in matrices]
+            raise WorkflowValidationError(
+                f"Data Combiner requires matching feature dimensions; got {got}."
+            )
+
+        params = _node_params(node)
+        seed = params.get("seed") if _has_value(params.get("seed")) else None
+        standardize = bool(params.get("standardize")) if _has_value(params.get("standardize")) else False
+        shuffle = bool(params.get("shuffle")) if _has_value(params.get("shuffle")) else False
+        warnings: list[str] = []
+
+        label_sets = [
+            list(parent.public["data"].get("feature_order") or [f"X{i + 1}" for i in range(n_features)])
+            for parent in data_parents
+        ]
+        labels = label_sets[0]
+        if len(labels) != n_features:
+            labels = [f"X{i + 1}" for i in range(n_features)]
+            warnings.append("First data input feature labels did not match matrix width; generated default labels.")
+        if any(label_set != labels for label_set in label_sets[1:]):
+            warnings.append("Data inputs have different feature labels; using labels from the first input.")
+
+        X = np.vstack(matrices)
+        if shuffle:
+            rng = np.random.default_rng(int(seed) if seed is not None else None)
+            X = X[rng.permutation(X.shape[0])]
+        if standardize:
+            mean = X.mean(axis=0)
+            std = X.std(axis=0)
+            zero_std = std < 1e-12
+            if np.any(zero_std):
+                warnings.append("Some columns had zero variance during combined-data standardization.")
+                std[zero_std] = 1.0
+            X = (X - mean) / std
+        if not np.isfinite(X).all():
+            raise WorkflowValidationError("Combined data contains NaN or infinite values.")
+
+        arrays: dict[str, np.ndarray] = {"X": X}
+        graph_meta: dict[str, Any] = {"preserved": False}
+        graph_candidates = [self._graph_like_from_context(parent) for parent in data_parents]
+        if all(candidate is not None for candidate in graph_candidates):
+            graphs = [candidate for candidate in graph_candidates if candidate is not None]
+            first_graph = graphs[0]
+            same_structure = all(np.array_equal(first_graph.B, graph.B) for graph in graphs[1:])
+            if same_structure:
+                arrays["B_true"] = np.asarray(first_graph.B, dtype=int)
+                arrays["W_true"] = np.asarray(first_graph.W, dtype=float)
+                graph_meta = {
+                    "preserved": True,
+                    "source": "shared_input_graph",
+                    "graph_space": first_graph.graph_space,
+                }
+                if any(not np.allclose(first_graph.W, graph.W) for graph in graphs[1:]):
+                    warnings.append("Input data share the same binary graph but have different weights; using weights from the first input.")
+            else:
+                warnings.append("Input data do not share the same truth graph; graph output is unavailable for the combined data.")
+        else:
+            warnings.append("At least one data input has no truth graph; graph output is unavailable for the combined data.")
+
+        input_sample_counts = [int(matrix.shape[0]) for matrix in matrices]
+        ref = self.storage.write_npz(
+            self.run_dir,
+            f"{node.id}_combined_data",
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="data",
+            **arrays,
+        )
+        matrix_summaries = {"X": matrix_summary(X)}
+        if "B_true" in arrays:
+            matrix_summaries["B_true"] = matrix_summary(arrays["B_true"])
+        if "W_true" in arrays:
+            matrix_summaries["W_true"] = matrix_summary(arrays["W_true"])
+        data = {
+            "feature_order": labels,
+            "data_meta": {
+                "source": "combined",
+                "combine_mode": "row_concat",
+                "source_count": len(data_parents),
+                "input_sample_counts": input_sample_counts,
+                "n_samples": int(X.shape[0]),
+                "n_features": n_features,
+                "shuffle": shuffle,
+                "seed": seed,
+                "standardize": standardize,
+                "graph": graph_meta,
+            },
+            "matrix_summary": matrix_summaries,
+            "data_preview": _matrix_table_preview(X, labels),
+            "matrix_ref": ref,
+        }
+        data["artifact_ref"] = self.storage.write_artifact_json(
+            self.run_dir,
+            f"{node.id}_combined_data",
+            data,
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="data",
+            summary=data["data_meta"],
+        )
+        return NodeContext(public={"kind": "data", "data": data}, arrays=arrays, warnings=warnings)
 
     def _execute_algorithm(self, node: WorkflowNode, parents: list[NodeContext]) -> NodeContext:
         data_parent = self._find_parent(parents, "data")
@@ -1055,7 +1171,10 @@ class WorkflowExecutor:
                 graph_space=str(graph.get("graph_meta", {}).get("graph_space", "dag")),
             )
         if kind == "data":
-            W = np.asarray(parent.arrays.get("W_true", parent.arrays.get("B_true")), dtype=float)
+            graph_array = parent.arrays.get("W_true", parent.arrays.get("B_true"))
+            if graph_array is None:
+                return None
+            W = np.asarray(graph_array, dtype=float)
             B = np.asarray(parent.arrays.get("B_true", binary_adjacency(W)), dtype=int)
             data = parent.public["data"]
             return GraphLike(

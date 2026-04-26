@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from dag_studio.baselines import BaselineResult
-from dag_studio.execution import WorkflowExecutor, WorkflowValidationError, topological_order
+from dag_studio.execution import WorkflowExecutionError, WorkflowExecutor, WorkflowValidationError, topological_order
 from dag_studio.jobs import JobManager
 from dag_studio.schemas import WorkflowDefinition
 from dag_studio.storage import LocalStudioStorage
@@ -242,6 +242,62 @@ def test_data_generator_accepts_algorithm_graph_output(
 
     assert {record.status for record in records.values()} == {"success"}
     assert records["resample"].outputs["data"]["data_meta"]["graph_source"] == "algorithm_result:PC"
+
+
+def test_data_combiner_concatenates_matching_data_inputs(tmp_path: Path) -> None:
+    storage = LocalStudioStorage(tmp_path)
+    _run_id, run_dir = storage.create_run_dir("combine-data")
+    workflow = WorkflowDefinition(
+        name="combine data",
+        nodes=[
+            {"id": "structure", "type": "structure_generator", "data": {"params": {"d": 4, "s0": 3, "seed": 31}}},
+            {"id": "data_a", "type": "data_generator", "data": {"params": {"n_samples": 12, "seed": 31}}},
+            {"id": "data_b", "type": "data_generator", "data": {"params": {"n_samples": 18, "seed": 32}}},
+            {"id": "combined", "type": "data_combiner", "data": {"params": {"shuffle": False, "standardize": False}}},
+        ],
+        edges=[
+            {"source": "structure", "target": "data_a", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "structure", "target": "data_b", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "data_a", "target": "combined", "sourceHandle": "data", "targetHandle": "data"},
+            {"source": "data_b", "target": "combined", "sourceHandle": "data", "targetHandle": "data"},
+        ],
+    )
+
+    records = WorkflowExecutor(storage, run_dir).execute(workflow)
+
+    combined = records["combined"].outputs["data"]
+    assert records["combined"].status == "success"
+    assert combined["data_meta"]["source"] == "combined"
+    assert combined["data_meta"]["input_sample_counts"] == [12, 18]
+    assert combined["matrix_summary"]["X"]["shape"] == [30, 4]
+    assert combined["data_meta"]["graph"]["preserved"] is True
+
+
+def test_data_combiner_rejects_mismatched_feature_dimensions(tmp_path: Path) -> None:
+    storage = LocalStudioStorage(tmp_path)
+    _run_id, run_dir = storage.create_run_dir("combine-data-mismatch")
+    workflow = WorkflowDefinition(
+        name="combine data mismatch",
+        nodes=[
+            {"id": "structure_a", "type": "structure_generator", "data": {"params": {"d": 4, "s0": 3, "seed": 41}}},
+            {"id": "structure_b", "type": "structure_generator", "data": {"params": {"d": 5, "s0": 4, "seed": 42}}},
+            {"id": "data_a", "type": "data_generator", "data": {"params": {"n_samples": 10, "seed": 41}}},
+            {"id": "data_b", "type": "data_generator", "data": {"params": {"n_samples": 10, "seed": 42}}},
+            {"id": "combined", "type": "data_combiner", "data": {"params": {}}},
+        ],
+        edges=[
+            {"source": "structure_a", "target": "data_a", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "structure_b", "target": "data_b", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "data_a", "target": "combined", "sourceHandle": "data", "targetHandle": "data"},
+            {"source": "data_b", "target": "combined", "sourceHandle": "data", "targetHandle": "data"},
+        ],
+    )
+
+    with pytest.raises(WorkflowExecutionError) as exc_info:
+        WorkflowExecutor(storage, run_dir).execute(workflow)
+
+    assert exc_info.value.records["combined"].status == "failed"
+    assert "matching feature dimensions" in (exc_info.value.records["combined"].error or "")
 
 
 def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:

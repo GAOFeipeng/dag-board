@@ -114,6 +114,19 @@ export const resources = {
               data: { label: 'Data' },
             },
           },
+          data_combiner: {
+            label: 'Data Combiner',
+            description: 'Concatenate multiple data inputs with the same feature dimension.',
+            fields: {
+              shuffle: { label: 'Shuffle Rows' },
+              standardize: { label: 'Standardize' },
+              seed: { label: 'Seed' },
+            },
+            ports: {
+              data: { label: 'Data' },
+              graph: { label: 'Graph' },
+            },
+          },
           algorithm: {
             label: 'Algorithm',
             description: 'Run an official library-backed causal discovery algorithm.',
@@ -297,6 +310,19 @@ export const resources = {
               data: { label: '数据' },
             },
           },
+          data_combiner: {
+            label: '数据合并器',
+            description: '将多个相同特征维度的数据按样本行合并。',
+            fields: {
+              shuffle: { label: '打乱行' },
+              standardize: { label: '标准化' },
+              seed: { label: '随机种子' },
+            },
+            ports: {
+              data: { label: '数据' },
+              graph: { label: '图' },
+            },
+          },
           algorithm: {
             label: '算法',
             description: '运行官方库支持的因果发现算法。',
@@ -478,6 +504,19 @@ export const resources = {
             ports: {
               graph: { label: 'グラフ' },
               data: { label: 'データ' },
+            },
+          },
+          data_combiner: {
+            label: 'データ結合器',
+            description: '同じ特徴次元を持つ複数のデータ入力を行方向に結合します。',
+            fields: {
+              shuffle: { label: '行をシャッフル' },
+              standardize: { label: '標準化' },
+              seed: { label: 'シード' },
+            },
+            ports: {
+              data: { label: 'データ' },
+              graph: { label: 'グラフ' },
             },
           },
           algorithm: {

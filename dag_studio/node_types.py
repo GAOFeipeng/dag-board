@@ -56,6 +56,27 @@ NODE_TYPES = [
         ],
     ),
     NodeTypeDefinition(
+        id="data_combiner",
+        label="Data Combiner",
+        description="Concatenate multiple data inputs with the same feature dimension.",
+        inputs=["data"],
+        outputs=["data"],
+        input_ports=[
+            NodePort(id="data", label="Data", kind="data", required=True, min_count=2, max_count=None),
+        ],
+        output_ports=[
+            NodePort(id="data", label="Data", kind="data", required=False),
+            NodePort(id="graph", label="Graph", kind="graph", required=False),
+        ],
+        preview=NodePreviewDefinition(enabled_by_default=True, supported_outputs=["data"]),
+        inline_fields=["shuffle", "standardize", "seed"],
+        fields=[
+            NodeField(name="shuffle", label="Shuffle Rows", kind="boolean", default=False),
+            NodeField(name="standardize", label="Standardize", kind="boolean", default=False),
+            NodeField(name="seed", label="Seed", kind="integer", default=None, placeholder="empty"),
+        ],
+    ),
+    NodeTypeDefinition(
         id="algorithm",
         label="Algorithm",
         description="Run an official library-backed causal discovery algorithm.",

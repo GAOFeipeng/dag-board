@@ -1,11 +1,12 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { AlertCircle, CheckCircle2, Clock3, Database, EyeOff, GitBranch, LineChart, PlayCircle, Table2, Workflow } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock3, Database, EyeOff, GitBranch, GitMerge, LineChart, PlayCircle, Table2, Workflow } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { NodeField, NodePort, StudioNodeData } from '../types';
 
 const iconByType = {
   structure_generator: GitBranch,
   data_generator: Database,
+  data_combiner: GitMerge,
   algorithm: PlayCircle,
   evaluation: LineChart,
   evaluation_summary: Table2,
