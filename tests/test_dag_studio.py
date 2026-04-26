@@ -200,6 +200,50 @@ def test_algorithm_node_treats_blank_optional_params_as_defaults(
     assert records["algo"].outputs["algorithm_result"]["w_threshold"] == 0.3
 
 
+def test_data_generator_accepts_algorithm_graph_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_baseline(name: str, X: np.ndarray, params: dict[str, Any]) -> BaselineResult:
+        W = np.zeros((X.shape[1], X.shape[1]), dtype=float)
+        W[0, 1] = 0.7
+        return BaselineResult(
+            W_est=W,
+            B_est=(W != 0).astype(int),
+            edge_scores=np.abs(W),
+            provider="test",
+            graph_space="dag",
+            runtime=0.0,
+            is_dag=True,
+            params={},
+        )
+
+    import dag_studio.execution as execution
+
+    monkeypatch.setattr(execution, "run_official_baseline", fake_baseline)
+    storage = LocalStudioStorage(tmp_path)
+    _run_id, run_dir = storage.create_run_dir("algorithm-graph-to-data")
+    workflow = WorkflowDefinition(
+        name="algorithm graph to data",
+        nodes=[
+            {"id": "structure", "type": "structure_generator", "data": {"params": {"d": 4, "s0": 3, "seed": 21}}},
+            {"id": "data", "type": "data_generator", "data": {"params": {"n_samples": 20, "seed": 21}}},
+            {"id": "algo", "type": "algorithm", "data": {"params": {"algorithm_id": "PC", "w_threshold": None}}},
+            {"id": "resample", "type": "data_generator", "data": {"params": {"n_samples": 15, "seed": 22}}},
+        ],
+        edges=[
+            {"source": "structure", "target": "data", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "data", "target": "algo", "sourceHandle": "data", "targetHandle": "data"},
+            {"source": "algo", "target": "resample", "sourceHandle": "graph", "targetHandle": "graph"},
+        ],
+    )
+
+    records = WorkflowExecutor(storage, run_dir).execute(workflow)
+
+    assert {record.status for record in records.values()} == {"success"}
+    assert records["resample"].outputs["data"]["data_meta"]["graph_source"] == "algorithm_result:PC"
+
+
 def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:
     storage = LocalStudioStorage(tmp_path)
     _run_id, run_dir = storage.create_run_dir("multi-algorithm")

@@ -616,15 +616,21 @@ class WorkflowExecutor:
         return NodeContext(public={"kind": "graph", "graph": graph}, arrays={"B_true": B, "W_true": W})
 
     def _execute_data(self, node: WorkflowNode, parents: list[NodeContext]) -> NodeContext:
-        graph_parent = self._find_parent(parents, "graph")
+        graph_input: Optional[GraphLike] = None
+        for parent in parents:
+            graph_input = self._graph_like_from_context(parent)
+            if graph_input is not None:
+                break
+        if graph_input is None:
+            raise WorkflowValidationError("Data Generator requires a graph input.")
         params = _node_params(node)
-        W = np.asarray(graph_parent.arrays["W_true"], dtype=float)
+        W = np.asarray(graph_input.W, dtype=float)
         B = binary_adjacency(W)
-        n_samples = int(params.get("n_samples", 120))
-        sem_type = str(params.get("sem_type", "gauss"))
-        sem_noise = params.get("sem_noise", 1.0)
-        seed = params.get("seed")
-        standardize = bool(params.get("standardize", True))
+        n_samples = int(params.get("n_samples") if _has_value(params.get("n_samples")) else 120)
+        sem_type = str(params.get("sem_type") if _has_value(params.get("sem_type")) else "gauss")
+        sem_noise = _float_param(params, "sem_noise", 1.0)
+        seed = params.get("seed") if _has_value(params.get("seed")) else None
+        standardize = bool(params.get("standardize")) if _has_value(params.get("standardize")) else True
         if n_samples <= 0:
             raise WorkflowValidationError("`n_samples` must be positive.")
         if seed is not None:
@@ -632,6 +638,10 @@ class WorkflowExecutor:
 
         if sem_type not in {"gauss", "exp", "gumbel", "uniform", "logistic", "poisson", "mlp", "mim"}:
             raise WorkflowValidationError(f"Unsupported SEM type: {sem_type}")
+        if not is_dag(W):
+            raise WorkflowValidationError(
+                f"Data Generator requires an acyclic DAG graph input; `{graph_input.source}` is not a DAG."
+            )
         X = simulate_sem(W, n_samples, sem_type, float(sem_noise), seed=int(seed) if seed is not None else None)
 
         warnings: list[str] = []
@@ -646,7 +656,7 @@ class WorkflowExecutor:
         if not np.isfinite(X).all():
             raise WorkflowValidationError("Generated data contains NaN or infinite values.")
 
-        labels = graph_parent.public["graph"]["node_labels"]
+        labels = graph_input.labels
         ref = self.storage.write_npz(
             self.run_dir,
             f"{node.id}_data",
@@ -667,6 +677,8 @@ class WorkflowExecutor:
                 "sem_noise": sem_noise,
                 "seed": seed,
                 "standardize": standardize,
+                "graph_source": graph_input.source,
+                "graph_space": graph_input.graph_space,
             },
             "matrix_summary": {
                 "X": matrix_summary(X),
