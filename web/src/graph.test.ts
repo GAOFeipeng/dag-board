@@ -43,6 +43,7 @@ describe('workflow graph helpers', () => {
       'GES',
       'Notears',
     ]);
+    expect(workflow.nodes.find((node) => node.id === 'notears')?.data.params).toMatchObject({ max_iter: 100, lambda1: 0.1 });
     expect(payload.nodes.filter((node) => node.type === 'evaluation')).toHaveLength(3);
     expect(payload.nodes.filter((node) => node.type === 'evaluation_summary')).toHaveLength(1);
     expect(payload.edges.length).toBeGreaterThan(0);

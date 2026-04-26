@@ -133,10 +133,20 @@ def _run_castle(name: str, X: np.ndarray, params: dict[str, Any]) -> BaselineRes
     init_params = _supported_kwargs(algo_cls.__init__, _library_params(params))
     start = time.time()
     learner = algo_cls(**init_params)
+    learn_params: dict[str, Any] = {}
+    if name == "NotearsLowRank":
+        learn_params.setdefault("rank", int(params.get("rank", 2)))
+    elif name == "PC":
+        pc_learn_options = _library_params(params)
+        learn_params = {
+            key: value
+            for key, value in pc_learn_options.items()
+            if key in {"p_cores", "s", "batch"} and value is not None
+        }
     if hasattr(learner, "learn"):
-        learner.learn(X)
+        learner.learn(X, **learn_params)
     elif hasattr(learner, "fit"):
-        learner.fit(X)
+        learner.fit(X, **learn_params)
     else:
         raise ValueError(f"gCastle baseline {name} does not expose learn/fit.")
     runtime = time.time() - start
@@ -156,7 +166,7 @@ def _run_castle(name: str, X: np.ndarray, params: dict[str, Any]) -> BaselineRes
         n_iter=int(getattr(learner, "n_iter_", 0) or 0),
         converged=bool(getattr(learner, "converged_", True)),
         is_dag=bool(is_dag(B_est)) if graph_space == "dag" else False,
-        params=init_params,
+        params={**init_params, **learn_params},
     )
 
 
@@ -171,9 +181,9 @@ def _run_dagma(X: np.ndarray, params: dict[str, Any]) -> BaselineResult:
     fit_params = _supported_kwargs(learner.fit, _library_params(params))
     fit_params.setdefault("lambda1", float(params.get("lambda1", 0.03)))
     fit_params.setdefault("w_threshold", threshold)
-    fit_params.setdefault("T", int(params.get("T", 2)))
-    fit_params.setdefault("warm_iter", int(params.get("warm_iter", 100)))
-    fit_params.setdefault("max_iter", int(params.get("max_iter", 200)))
+    fit_params.setdefault("T", int(params.get("T", 5)))
+    fit_params.setdefault("warm_iter", int(params.get("warm_iter", 1000)))
+    fit_params.setdefault("max_iter", int(params.get("max_iter", 5000)))
     start = time.time()
     W_est = np.asarray(learner.fit(X, **fit_params), dtype=float)
     runtime = time.time() - start

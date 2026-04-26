@@ -50,6 +50,14 @@ import type { ArtifactRecord, NodeTypeDefinition, RunEvent, RunOptions, StudioEd
 
 const defaults = createDefaultWorkflow();
 const PREVIEW_STORAGE_KEY = 'dagboard.showNodePreviews';
+const ALGORITHM_PARAM_DEFAULTS: Record<string, Record<string, unknown>> = {
+  PC: { algorithm_id: 'PC', alpha: 0.05, variant: 'original', w_threshold: 0.3, seed: 42 },
+  GES: { algorithm_id: 'GES', criterion: 'bic', w_threshold: 0.3, seed: 42 },
+  Notears: { algorithm_id: 'Notears', lambda1: 0.1, max_iter: 100, w_threshold: 0.3, seed: 42 },
+  NotearsLowRank: { algorithm_id: 'NotearsLowRank', rank: 2, max_iter: 15, w_threshold: 0.3, seed: 42 },
+  NotearsNonlinear: { algorithm_id: 'NotearsNonlinear', lambda1: 0.01, lambda2: 0.01, max_iter: 100, w_threshold: 0.3, seed: 42 },
+  DAGMA: { algorithm_id: 'DAGMA', lambda1: 0.03, T: 5, warm_iter: 1000, max_iter: 5000, w_threshold: 0.3, seed: 42 },
+};
 
 type ContextMenuState = { nodeId: string; x: number; y: number } | null;
 
@@ -92,6 +100,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function paramsWithPatch(node: StudioNodeType, patch: Record<string, unknown>): Record<string, unknown> {
   const current = node.data.params ?? {};
   const next = { ...current, ...patch };
+  if (node.data.nodeType === 'algorithm' && typeof patch.algorithm_id === 'string' && patch.algorithm_id !== current.algorithm_id) {
+    return { ...next, ...(ALGORITHM_PARAM_DEFAULTS[patch.algorithm_id] ?? {}), algorithm_id: patch.algorithm_id };
+  }
   if (node.data.nodeType === 'evaluation_summary' && patch.primary_metric !== undefined && patch.primary_metric !== current.primary_metric) {
     next.sort_order = 'auto';
   }

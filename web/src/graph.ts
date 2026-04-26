@@ -90,7 +90,7 @@ export function createDefaultWorkflow(): { nodes: StudioNode[]; edges: Edge[] } 
       id: 'notears',
       type: 'studio',
       position: { x: 600, y: 460 },
-      data: { label: 'NOTEARS Baseline', nodeType: 'algorithm', params: { algorithm_id: 'Notears', lambda1: 0.03, max_iter: 20, w_threshold: 0.3, seed: 42 } },
+      data: { label: 'NOTEARS Baseline', nodeType: 'algorithm', params: { algorithm_id: 'Notears', lambda1: 0.1, max_iter: 100, w_threshold: 0.3, seed: 42 } },
     },
     {
       id: 'eval-pc',

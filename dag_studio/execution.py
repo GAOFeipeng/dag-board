@@ -704,6 +704,8 @@ class WorkflowExecutor:
         result = {
             "algorithm": algorithm_id,
             "provider": metadata.get("provider", baseline.provider),
+            "official_origin": metadata.get("origin"),
+            "package": metadata.get("package"),
             "params": baseline.params or {},
             "runtime": baseline.runtime,
             "n_iter": baseline.n_iter,

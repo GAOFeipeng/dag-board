@@ -162,6 +162,41 @@ button.primary:hover {
   background: #369169;
 }
 
+.react-flow__controls {
+  overflow: hidden;
+  border: 1px solid #384148;
+  border-radius: 8px;
+  background: #20262a;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
+.react-flow__controls-button {
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid #384148;
+  border-radius: 0;
+  background: #20262a;
+  color: #edf2f4;
+}
+
+.react-flow__controls-button:hover {
+  background: #293137;
+  color: #ffffff;
+}
+
+.react-flow__controls-button svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  max-width: 15px;
+  max-height: 15px;
+  fill: currentColor;
+  stroke: currentColor;
+}
+
 .panel-heading {
   display: flex;
   align-items: center;

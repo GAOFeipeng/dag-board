@@ -23,6 +23,8 @@ def _workflow(algorithm_id: str = "PC") -> WorkflowDefinition:
     }
     if algorithm_id == "DAGMA":
         algo_params.update({"warm_iter": 20, "T": 1, "lambda1": 0.03})
+    if algorithm_id == "NotearsLowRank":
+        algo_params.update({"rank": 2, "max_iter": 2})
     return WorkflowDefinition(
         name=f"{algorithm_id} smoke",
         nodes=[
@@ -335,7 +337,7 @@ def test_evaluation_bic_blocks_without_data(tmp_path: Path) -> None:
     assert "data" in (records["eval"].error or "")
 
 
-@pytest.mark.parametrize("algorithm_id", ["PC", "GES", "Notears", "DAGMA"])
+@pytest.mark.parametrize("algorithm_id", ["PC", "GES", "Notears", "NotearsLowRank", "DAGMA"])
 def test_algorithm_node_uses_library_wrappers(tmp_path: Path, algorithm_id: str) -> None:
     storage = LocalStudioStorage(tmp_path)
     _run_id, run_dir = storage.create_run_dir(algorithm_id)
@@ -348,6 +350,8 @@ def test_algorithm_node_uses_library_wrappers(tmp_path: Path, algorithm_id: str)
     result = records["algo"].outputs["algorithm_result"]
     assert records["algo"].status == "success"
     assert result["algorithm"] == algorithm_id
+    assert result["official_origin"]
+    assert result["package"] in {"castle", "dagma"}
     assert result["matrix_summary"]["W_est"]["shape"] == [5, 5]
 
 
