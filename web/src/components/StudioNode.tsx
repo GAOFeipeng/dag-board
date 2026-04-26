@@ -218,6 +218,11 @@ function renderPreview(output: Record<string, unknown>, nodeId: string) {
     );
   }
 
+  const dataPreview = isRecord(output.data_preview) ? output.data_preview : null;
+  if (dataPreview) {
+    return <InlineDataTable preview={dataPreview} />;
+  }
+
   const nodes = getPreviewNodes(output);
   const edges = getPreviewEdges(output);
   if (nodes.length) {
@@ -241,6 +246,32 @@ function renderPreview(output: Record<string, unknown>, nodeId: string) {
   }
 
   return <pre className="inline-json">{JSON.stringify(output, null, 2)}</pre>;
+}
+
+function InlineDataTable({ preview }: { preview: Record<string, unknown> }) {
+  const columns = Array.isArray(preview.columns) ? preview.columns.map(String).slice(0, 5) : [];
+  const rows = Array.isArray(preview.rows) ? preview.rows.filter(isRecord).slice(0, 5) : [];
+  return (
+    <div className="inline-data-table">
+      <div className="inline-data-head">
+        <span>#</span>
+        {columns.map((column) => (
+          <span key={column}>{column}</span>
+        ))}
+      </div>
+      {rows.map((row, rowIndex) => {
+        const values = Array.isArray(row.values) ? row.values.slice(0, columns.length) : [];
+        return (
+          <div key={String(row.index ?? rowIndex)} className="inline-data-row">
+            <span>{String(row.index ?? rowIndex)}</span>
+            {values.map((value, valueIndex) => (
+              <span key={valueIndex}>{typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : String(value ?? '-')}</span>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function MiniGraph({

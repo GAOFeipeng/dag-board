@@ -602,6 +602,47 @@ button.primary:hover {
   font-size: 10px;
 }
 
+.inline-data-table {
+  display: grid;
+  gap: 3px;
+  max-height: 118px;
+  overflow: auto;
+  border: 1px solid #2a3034;
+  border-radius: 6px;
+  background: #101416;
+  padding: 5px;
+}
+
+.inline-data-head,
+.inline-data-row {
+  display: grid;
+  grid-template-columns: 24px repeat(5, minmax(30px, 1fr));
+  gap: 3px;
+  min-width: 0;
+}
+
+.inline-data-head span,
+.inline-data-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+  padding: 3px 4px;
+  font-size: 9px;
+  text-align: right;
+}
+
+.inline-data-head span {
+  background: #25313a;
+  color: #bfe2fb;
+  font-weight: 800;
+}
+
+.inline-data-row span {
+  background: #15191c;
+  color: #c8d1d5;
+}
+
 .inline-json {
   margin: 0;
   max-height: 90px;
@@ -770,6 +811,63 @@ button.primary:hover {
   background: #111416;
   border: 1px solid #2a3034;
   border-radius: 6px;
+}
+
+.preview-table-wrap {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.preview-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid #2a3034;
+  border-radius: 6px;
+  background: #111416;
+  font-size: 11px;
+}
+
+.preview-table th,
+.preview-table td {
+  max-width: 92px;
+  padding: 6px 7px;
+  border-bottom: 1px solid #20262a;
+  color: #c8d1d5;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-table th {
+  background: #20262a;
+  color: #bfe2fb;
+  font-weight: 800;
+}
+
+.preview-table th:nth-child(2),
+.preview-table td:nth-child(2) {
+  text-align: left;
+}
+
+.preview-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.preview-caption {
+  color: #9aa6ad;
+  font-size: 11px;
+}
+
+.preview-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 230px;
+  overflow: auto;
 }
 
 .graph-preview circle {

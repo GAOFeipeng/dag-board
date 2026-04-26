@@ -132,7 +132,7 @@ export function createDefaultWorkflow(): { nodes: StudioNode[]; edges: Edge[] } 
       id: 'summary',
       type: 'studio',
       position: { x: 1500, y: 240 },
-      data: { label: 'Evaluation Summary', nodeType: 'evaluation_summary', params: { primary_metric: 'f1', sort_order: 'desc', metrics: [] } },
+      data: { label: 'Evaluation Summary', nodeType: 'evaluation_summary', params: { primary_metric: 'f1', sort_order: 'auto', metrics: [] } },
     },
   ];
   const edges: Edge[] = [

@@ -32,6 +32,7 @@ import { StudioNode } from './components/StudioNode';
 import { WorkflowRunBrowser } from './components/WorkflowRunBrowser';
 import { createDefaultWorkflow, defaultParams, toWorkflowPayload, workflowPayloadToCanvas } from './graph';
 import { localizeNodeTypeCatalog } from './i18n';
+import { transformNodeOutputForParams } from './outputTransforms';
 import {
   applyRunEventToEdges,
   applyRunEventToNodes,
@@ -86,6 +87,15 @@ function previewOutputForNode(output: Record<string, unknown> | undefined): Reco
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function paramsWithPatch(node: StudioNodeType, patch: Record<string, unknown>): Record<string, unknown> {
+  const current = node.data.params ?? {};
+  const next = { ...current, ...patch };
+  if (node.data.nodeType === 'evaluation_summary' && patch.primary_metric !== undefined && patch.primary_metric !== current.primary_metric) {
+    next.sort_order = 'auto';
+  }
+  return next;
 }
 
 function StudioCanvas() {
@@ -143,13 +153,24 @@ function StudioCanvas() {
     [],
   );
   const selectedNode = (nodes.find((node) => node.id === selectedNodeId) ?? null) as StudioNodeType | null;
+  const displayNodeOutputs = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(nodeOutputs).map(([nodeId, output]) => {
+          const node = (nodes as StudioNodeType[]).find((item) => item.id === nodeId);
+          return [nodeId, transformNodeOutputForParams(output, node?.data.params) ?? output];
+        }),
+      ),
+    [nodeOutputs, nodes],
+  );
+  const selectedNodeOutput = selectedNodeId ? displayNodeOutputs[selectedNodeId] ?? null : null;
 
   const updateInlineParam = useCallback(
     (nodeId: string, fieldName: string, value: unknown) => {
       setNodes((current) =>
         current.map((node) =>
           node.id === nodeId
-            ? { ...node, data: { ...node.data, params: { ...(node.data.params ?? {}), [fieldName]: value } } }
+            ? { ...node, data: { ...node.data, params: paramsWithPatch(node as StudioNodeType, { [fieldName]: value }) } }
             : node,
         ),
       );
@@ -195,14 +216,14 @@ function StudioCanvas() {
             inputPorts: definition?.input_ports ?? [],
             outputPorts: definition?.output_ports ?? [],
             inlineFields: (definition?.fields ?? []).filter((field) => inlineNames.has(field.name)),
-            previewOutput: previewOutputForNode(nodeOutputs[node.id]),
+            previewOutput: previewOutputForNode(displayNodeOutputs[node.id]),
             showPreview: showNodePreviews && Boolean(definition?.preview?.supported_outputs?.length) && !previewCollapsed,
             onInlineParamChange: updateInlineParam,
             onTogglePreview: toggleNodePreview,
           },
         };
       }),
-    [edges, localizedNodeTypes, nodeOutputs, nodes, showNodePreviews, toggleNodePreview, updateInlineParam],
+    [displayNodeOutputs, edges, localizedNodeTypes, nodes, showNodePreviews, toggleNodePreview, updateInlineParam],
   );
   const contextMenuNode = contextMenu ? ((displayNodes.find((node) => node.id === contextMenu.nodeId) ?? null) as StudioNodeType | null) : null;
 
@@ -377,7 +398,7 @@ function StudioCanvas() {
   const updateParams = useCallback(
     (nodeId: string, params: Record<string, unknown>) => {
       setNodes((current) =>
-        current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, params } } : node)),
+        current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, params: paramsWithPatch(node as StudioNodeType, params) } } : node)),
       );
     },
     [setNodes],
@@ -578,13 +599,13 @@ function StudioCanvas() {
           <RunPanel
             events={events}
             runStatus={runStatus}
-            nodeOutputs={nodeOutputs}
+            nodeOutputs={displayNodeOutputs}
             selectedNodeId={selectedNodeId}
             manifest={manifest}
             artifacts={artifactsQuery.data ?? []}
             onOpenArtifact={(artifact) => void openArtifact(artifact)}
           />
-          <GraphPreview graphView={graphView} />
+          <GraphPreview graphView={graphView} selectedNodeId={selectedNodeId} selectedOutput={selectedNodeOutput} />
         </div>
       </main>
       <InspectorPanel

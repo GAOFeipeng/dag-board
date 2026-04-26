@@ -219,6 +219,28 @@ def _metric_sort_direction(metric: str) -> str:
     return "asc" if metric.lower() in LOWER_IS_BETTER_METRICS else "desc"
 
 
+def _resolve_sort_order(metric: str, sort_order: str) -> str:
+    return _metric_sort_direction(metric) if sort_order == "auto" else sort_order
+
+
+def _matrix_table_preview(matrix: np.ndarray, columns: list[str], rows: int = 12, decimals: int = 4) -> dict[str, Any]:
+    arr = np.asarray(matrix, dtype=float)
+    row_count = min(max(rows, 0), int(arr.shape[0])) if arr.ndim >= 2 else 0
+    col_count = int(arr.shape[1]) if arr.ndim >= 2 else 0
+    return {
+        "columns": columns[:col_count],
+        "row_count": int(arr.shape[0]) if arr.ndim >= 2 else 0,
+        "preview_count": row_count,
+        "rows": [
+            {
+                "index": int(index),
+                "values": [round(float(value), decimals) for value in arr[index, :col_count]],
+            }
+            for index in range(row_count)
+        ],
+    }
+
+
 def _evaluation_label(source_node_id: str, evaluation: dict[str, Any]) -> str:
     meta = evaluation.get("eval_meta") if isinstance(evaluation.get("eval_meta"), dict) else {}
     for key in ("prediction_source", "graph_source"):
@@ -631,6 +653,7 @@ class WorkflowExecutor:
                 "B_true": matrix_summary(B),
                 "W_true": matrix_summary(W),
             },
+            "data_preview": _matrix_table_preview(X, labels),
             "matrix_ref": ref,
         }
         data["artifact_ref"] = self.storage.write_artifact_json(
@@ -863,9 +886,10 @@ class WorkflowExecutor:
         selected_metrics = [str(item) for item in params.get("metrics", []) if str(item)]
         selected_metric_set = set(selected_metrics)
         primary_metric = str(params.get("primary_metric", "f1"))
-        sort_order = str(params.get("sort_order", "desc"))
-        if sort_order not in {"asc", "desc"}:
-            raise WorkflowValidationError("Evaluation summary sort_order must be `asc` or `desc`.")
+        sort_order = str(params.get("sort_order", "auto"))
+        if sort_order not in {"auto", "asc", "desc"}:
+            raise WorkflowValidationError("Evaluation summary sort_order must be `auto`, `asc`, or `desc`.")
+        effective_sort_order = _resolve_sort_order(primary_metric, sort_order)
 
         rows: list[dict[str, Any]] = []
         metric_names: set[str] = set()
@@ -903,10 +927,9 @@ class WorkflowExecutor:
             value = _finite_float(row.get(primary_metric))
             if value is None:
                 return (1, 0.0)
-            return (0, value)
+            return (0, -value if effective_sort_order == "desc" else value)
 
-        rows.sort(key=primary_value, reverse=sort_order == "desc")
-        rows.sort(key=lambda row: primary_value(row)[0])
+        rows.sort(key=primary_value)
         for rank, row in enumerate(rows, start=1):
             row["rank"] = rank
 
@@ -930,10 +953,12 @@ class WorkflowExecutor:
             "metrics": sorted(metric_names),
             "primary_metric": primary_metric,
             "sort_order": sort_order,
+            "effective_sort_order": effective_sort_order,
             "best_by_metric": best_by_metric,
             "summary_meta": {
                 "evaluation_count": len(rows),
                 "ranked_by": primary_metric,
+                "effective_sort_order": effective_sort_order,
             },
         }
         summary["artifact_ref"] = self.storage.write_artifact_json(

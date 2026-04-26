@@ -141,6 +141,8 @@ def test_workflow_executor_smoke(tmp_path: Path) -> None:
     assert {record.status for record in records.values()} == {"success"}
     assert records["structure"].outputs["kind"] == "graph"
     assert records["data"].outputs["kind"] == "data"
+    assert records["data"].outputs["data"]["data_preview"]["columns"]
+    assert records["data"].outputs["data"]["data_preview"]["rows"]
     assert "metrics" in records["eval"].outputs["evaluation"]
     assert records["view"].outputs["graph_view"]["edges"]
 
@@ -191,7 +193,7 @@ def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:
                 "id": "summary",
                 "type": "evaluation_summary",
                 "position": {"x": 4, "y": 0},
-                "data": {"params": {"primary_metric": "f1", "sort_order": "desc"}},
+                "data": {"params": {"primary_metric": "shd", "sort_order": "auto"}},
             },
         ],
         edges=[
@@ -216,6 +218,8 @@ def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:
     assert "shd" in records["eval_ges"].outputs["evaluation"]["metrics"]
     summary = records["summary"].outputs["evaluation_summary"]
     assert summary["summary_meta"]["evaluation_count"] == 2
+    assert summary["effective_sort_order"] == "asc"
+    assert [row["shd"] for row in summary["rows"]] == sorted(row["shd"] for row in summary["rows"])
     assert [row["rank"] for row in summary["rows"]] == [1, 2]
     assert "f1" in summary["best_by_metric"]
 

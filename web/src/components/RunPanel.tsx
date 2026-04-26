@@ -304,6 +304,82 @@ function FocusToggle({
   );
 }
 
+function OutputPreviewBlock({ output }: { output: JsonRecord }) {
+  const data = isRecord(output.data) ? output.data : null;
+  const dataPreview = isRecord(data?.data_preview) ? data.data_preview : null;
+  const summary = isRecord(output.evaluation_summary) ? output.evaluation_summary : null;
+  if (dataPreview) {
+    return <DataPreviewTable preview={dataPreview} />;
+  }
+  if (summary) {
+    return <SummaryTable summary={summary} />;
+  }
+  return null;
+}
+
+function DataPreviewTable({ preview }: { preview: JsonRecord }) {
+  const columns = Array.isArray(preview.columns) ? preview.columns.map(String) : [];
+  const rows = Array.isArray(preview.rows) ? preview.rows.filter(isRecord) : [];
+  return (
+    <div className="preview-table-wrap" style={{ marginTop: 8 }}>
+      <table className="preview-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            {columns.map((column) => (
+              <th key={column}>{column}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={String(row.index ?? rowIndex)}>
+              <td>{String(row.index ?? rowIndex)}</td>
+              {(Array.isArray(row.values) ? row.values : []).map((value, valueIndex) => (
+                <td key={valueIndex}>{formatValue(value)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="preview-caption">
+        {rows.length} / {String(preview.row_count ?? rows.length)} rows
+      </div>
+    </div>
+  );
+}
+
+function SummaryTable({ summary }: { summary: JsonRecord }) {
+  const rows = Array.isArray(summary.rows) ? summary.rows.filter(isRecord) : [];
+  const primaryMetric = typeof summary.primary_metric === 'string' ? summary.primary_metric : 'f1';
+  return (
+    <div className="preview-table-wrap" style={{ marginTop: 8 }}>
+      <table className="preview-table">
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Node</th>
+            <th>{primaryMetric}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={String(row.source_node_id ?? row.label ?? index)}>
+              <td>{String(row.rank ?? index + 1)}</td>
+              <td>{String(row.label ?? row.source_node_id ?? 'evaluation')}</td>
+              <td>{formatValue(row[primaryMetric])}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function formatValue(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(4) : String(value ?? '-');
+}
+
 export function RunPanel({
   events,
   runStatus,
@@ -414,6 +490,7 @@ export function RunPanel({
                     <span>{entry.nodeId}</span>
                     <code>{entry.status ?? outputKind(entry.output)}</code>
                   </summary>
+                  <OutputPreviewBlock output={entry.output} />
                   <pre className="output-json" style={{ height: 132, marginTop: 8 }}>
                     {jsonPreview(entry.output)}
                   </pre>

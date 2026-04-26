@@ -39,7 +39,7 @@ NODE_TYPES = [
             NodePort(id="data", label="Data", kind="data", required=False),
             NodePort(id="truth_graph", label="Truth Graph", kind="graph_like", required=False),
         ],
-        preview=NodePreviewDefinition(enabled_by_default=False, supported_outputs=["data"]),
+        preview=NodePreviewDefinition(enabled_by_default=True, supported_outputs=["data"]),
         inline_fields=["n_samples", "sem_type", "seed"],
         fields=[
             NodeField(name="n_samples", label="Samples", kind="integer", default=120),
@@ -145,7 +145,7 @@ NODE_TYPES = [
                 default="f1",
                 options=["f1", "shd", "precision", "recall", "tpr", "fdr", "fpr", "aupr", "bic", "sid"],
             ),
-            NodeField(name="sort_order", label="Sort Order", kind="select", default="desc", options=["desc", "asc"]),
+            NodeField(name="sort_order", label="Sort Order", kind="select", default="auto", options=["auto", "desc", "asc"]),
             NodeField(name="metrics", label="Metrics", kind="json", default=[]),
         ],
     ),
