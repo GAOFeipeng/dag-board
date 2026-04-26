@@ -84,12 +84,14 @@ function FieldEditor({
 
 export function InspectorPanel({
   selectedNode,
+  selectionSummary,
   nodeTypes,
   algorithms,
   onUpdate,
   onRename,
 }: {
   selectedNode: StudioNode | null;
+  selectionSummary?: { nodeCount: number; edgeCount: number };
   nodeTypes: NodeTypeDefinition[];
   algorithms: AlgorithmRow[];
   onUpdate: (nodeId: string, params: Record<string, unknown>) => void;
@@ -105,7 +107,12 @@ export function InspectorPanel({
         <SlidersHorizontal size={16} />
         <span>{t('panels.inspector')}</span>
       </div>
-      {!selectedNode || !definition ? (
+      {selectionSummary && selectionSummary.nodeCount > 1 ? (
+        <div className="empty-state">
+          <p>{t('panels.multiSelect', selectionSummary)}</p>
+          <p>{t('panels.multiSelectHint')}</p>
+        </div>
+      ) : !selectedNode || !definition ? (
         <div className="empty-state">{t('panels.selectNode')}</div>
       ) : (
         <div className="inspector-body">

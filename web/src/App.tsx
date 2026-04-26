@@ -1,13 +1,14 @@
 import '@xyflow/react/dist/style.css';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  applyEdgeChanges,
+  applyNodeChanges,
   Background,
   ConnectionMode,
   Controls,
   ReactFlow,
   ReactFlowProvider,
-  addEdge,
   reconnectEdge,
   useEdgesState,
   useNodesState,
@@ -15,13 +16,38 @@ import {
   MarkerType,
   type Connection,
   type Edge,
+  type EdgeChange,
+  type NodeChange,
   type OnReconnect,
   type NodeTypes,
 } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
-import { Eye, EyeOff, FolderOpen, Link2, Play, RotateCcw, Save } from 'lucide-react';
+import { Eye, EyeOff, FolderOpen, LayoutGrid, Link2, Play, Redo2, RotateCcw, Save, Undo2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { api } from './api';
+import {
+  autoLayoutCanvas,
+  clearCanvasSelection,
+  cloneCanvasSnapshot,
+  copySelectionToClipboard,
+  createCanvasHistory,
+  deleteSelectionFromCanvas,
+  editableTargetHasFocus,
+  pasteClipboardToCanvas,
+  pushCanvasHistory,
+  redoCanvasHistory,
+  restoreDefaultEdgesForCanvas,
+  selectAllCanvas,
+  selectedNodeIds,
+  selectionSummary as getSelectionSummary,
+  toggleDisabledForNodes,
+  undoCanvasHistory,
+  withEditableEdgeDefaults,
+  type CanvasClipboard,
+  type CanvasHistory,
+  type CanvasSnapshot,
+} from './canvasActions';
+import { CanvasContextMenu } from './components/CanvasContextMenu';
 import { GraphPreview } from './components/GraphPreview';
 import { InspectorPanel } from './components/InspectorPanel';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
@@ -36,32 +62,39 @@ import { transformNodeOutputForParams } from './outputTransforms';
 import {
   applyRunEventToEdges,
   applyRunEventToNodes,
-  deleteNodeAndEdges,
-  duplicateNode,
   getNodeInputStatus,
   preflightConnection,
   queueRunNodes,
   resetRunEdges,
-  toggleNodeDisabled,
   validateWorkflowInputs,
+  type ConnectionPreflightResult,
 } from './runState';
 import { useStudioStore } from './store';
 import type { ArtifactRecord, NodeTypeDefinition, RunEvent, RunOptions, StudioEdge, StudioNode as StudioNodeType, WorkflowPayload } from './types';
 
-const defaults = createDefaultWorkflow();
 const PREVIEW_STORAGE_KEY = 'dagboard.showNodePreviews';
+const DRAFT_STORAGE_KEY = 'dagboard.workflowDraft';
 
 type ContextMenuState = { nodeId: string; x: number; y: number } | null;
+type PaneMenuState = { x: number; y: number; flowPosition: { x: number; y: number } } | null;
 
-function editableEdgeDefaults(edge: Edge): Edge {
-  return {
-    ...edge,
-    className: edge.className ?? 'workflow-edge edge-ready',
-    markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed },
-    interactionWidth: edge.interactionWidth ?? 24,
-    reconnectable: edge.reconnectable ?? true,
-  };
+function loadInitialCanvas(): CanvasSnapshot {
+  if (typeof window === 'undefined') {
+    return createDefaultWorkflow();
+  }
+  const draft = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+  if (!draft) {
+    return createDefaultWorkflow();
+  }
+  try {
+    return workflowPayloadToCanvas(JSON.parse(draft) as WorkflowPayload);
+  } catch {
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    return createDefaultWorkflow();
+  }
 }
+
+const defaults = loadInitialCanvas();
 
 function disabledNodeIds(nodes: StudioNodeType[]): string[] {
   return nodes.filter((node) => node.data.disabled).map((node) => node.id);
@@ -107,7 +140,15 @@ function StudioCanvas() {
   const { t, i18n } = useTranslation();
   const [nodes, setNodes, onNodesChange] = useNodesState(defaults.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(defaults.edges);
+  void onNodesChange;
+  void onEdgesChange;
+  const historyRef = useRef<CanvasHistory>(createCanvasHistory());
+  const clipboardRef = useRef<CanvasClipboard | null>(null);
+  const dragSnapshotRef = useRef<CanvasSnapshot | null>(null);
+  const lastConnectionResultRef = useRef<ConnectionPreflightResult | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [paneMenu, setPaneMenu] = useState<PaneMenuState>(null);
+  const [canPaste, setCanPaste] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [showNodePreviews, setShowNodePreviews] = useState(() => localStorage.getItem(PREVIEW_STORAGE_KEY) !== 'false');
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -167,18 +208,79 @@ function StudioCanvas() {
     [nodeOutputs, nodes],
   );
   const selectedNodeOutput = selectedNodeId ? displayNodeOutputs[selectedNodeId] ?? null : null;
+  const currentSelection = useMemo(
+    () => getSelectionSummary({ nodes: nodes as StudioNodeType[], edges: edges as StudioEdge[] }),
+    [edges, nodes],
+  );
+
+  const currentCanvas = useCallback(
+    (): CanvasSnapshot => ({ nodes: nodes as StudioNodeType[], edges: edges as StudioEdge[] }),
+    [edges, nodes],
+  );
+
+  const applyCanvas = useCallback(
+    (snapshot: CanvasSnapshot, options: { clearRemovedOutputs?: boolean } = {}) => {
+      const currentNodeIds = new Set((nodes as StudioNodeType[]).map((node) => node.id));
+      const nextNodeIds = new Set(snapshot.nodes.map((node) => node.id));
+      const removedNodeIds = [...currentNodeIds].filter((nodeId) => !nextNodeIds.has(nodeId));
+      setNodes(snapshot.nodes);
+      setEdges(snapshot.edges);
+      const nextSelectedNode = snapshot.nodes.find((node) => node.selected) ?? null;
+      setSelectedNodeId(nextSelectedNode?.id ?? null);
+      if (options.clearRemovedOutputs && removedNodeIds.length) {
+        clearNodeOutputs(removedNodeIds);
+      }
+    },
+    [clearNodeOutputs, nodes, setEdges, setNodes, setSelectedNodeId],
+  );
+
+  const commitCanvas = useCallback(
+    (snapshot: CanvasSnapshot, options: { deletedNodeIds?: string[]; selectNodeId?: string | null } = {}) => {
+      const before = currentCanvas();
+      historyRef.current = pushCanvasHistory(historyRef.current, before, snapshot);
+      setNodes(snapshot.nodes);
+      setEdges(snapshot.edges);
+      if (options.selectNodeId !== undefined) {
+        setSelectedNodeId(options.selectNodeId);
+      } else {
+        setSelectedNodeId(snapshot.nodes.find((node) => node.selected)?.id ?? null);
+      }
+      if (options.deletedNodeIds?.length) {
+        clearNodeOutputs(options.deletedNodeIds);
+      }
+      setValidationError(null);
+    },
+    [clearNodeOutputs, currentCanvas, setEdges, setNodes, setSelectedNodeId],
+  );
+
+  const undoCanvas = useCallback(() => {
+    const result = undoCanvasHistory(historyRef.current, currentCanvas());
+    historyRef.current = result.history;
+    if (result.snapshot) {
+      applyCanvas(result.snapshot, { clearRemovedOutputs: true });
+      setValidationError(null);
+    }
+  }, [applyCanvas, currentCanvas]);
+
+  const redoCanvas = useCallback(() => {
+    const result = redoCanvasHistory(historyRef.current, currentCanvas());
+    historyRef.current = result.history;
+    if (result.snapshot) {
+      applyCanvas(result.snapshot, { clearRemovedOutputs: true });
+      setValidationError(null);
+    }
+  }, [applyCanvas, currentCanvas]);
 
   const updateInlineParam = useCallback(
     (nodeId: string, fieldName: string, value: unknown) => {
-      setNodes((current) =>
-        current.map((node) =>
-          node.id === nodeId
-            ? { ...node, data: { ...node.data, params: paramsWithPatch(node as StudioNodeType, { [fieldName]: value }) } }
-            : node,
-        ),
+      const nextNodes = (nodes as StudioNodeType[]).map((node) =>
+        node.id === nodeId
+          ? { ...node, data: { ...node.data, params: paramsWithPatch(node as StudioNodeType, { [fieldName]: value }) } }
+          : node,
       );
+      commitCanvas({ nodes: nextNodes, edges: edges as StudioEdge[] });
     },
-    [setNodes],
+    [commitCanvas, edges, nodes],
   );
 
   const toggleNodePreview = useCallback(
@@ -203,6 +305,13 @@ function StudioCanvas() {
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(toWorkflowPayload(nodes as StudioNodeType[], edges)));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [edges, nodes]);
 
   const displayNodes = useMemo(
     () =>
@@ -316,16 +425,22 @@ function StudioCanvas() {
     [connectEvents, edges, localizedNodeTypes, nodes, runsQuery, setEdges, setNodes, startRun, t, workflowsQuery],
   );
 
+  const saveWorkflow = useCallback(async () => {
+    const saved = await api.saveWorkflow(toWorkflowPayload(nodes as StudioNodeType[], edges));
+    if (saved.id) {
+      setSelectedWorkflowId(saved.id);
+      void workflowsQuery.refetch();
+    }
+  }, [edges, nodes, workflowsQuery]);
+
   const resetDefaultWorkflow = useCallback(() => {
     const next = createDefaultWorkflow();
-    setNodes(next.nodes);
-    setEdges(next.edges);
-    setSelectedNodeId(null);
+    commitCanvas(next, { deletedNodeIds: (nodes as StudioNodeType[]).map((node) => node.id), selectNodeId: null });
     setSelectedWorkflowId(null);
     setSelectedRunId(null);
     setValidationError(null);
     resetRun();
-  }, [resetRun, setEdges, setNodes, setSelectedNodeId]);
+  }, [commitCanvas, nodes, resetRun]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -341,40 +456,15 @@ function StudioCanvas() {
         return;
       }
       setValidationError(null);
-      setEdges((current) =>
-        addEdge(
-          editableEdgeDefaults({ ...connection, id: `${connection.source}-${connection.target}-${Date.now()}` } as Edge),
-          current,
-        ),
-      );
+      const nextEdge = withEditableEdgeDefaults({ ...connection, id: `${connection.source}-${connection.target}-${Date.now()}` } as Edge);
+      commitCanvas({ nodes: nodes as StudioNodeType[], edges: [...(edges as StudioEdge[]), nextEdge] });
     },
-    [edges, localizedNodeTypes, nodes, setEdges],
+    [commitCanvas, edges, localizedNodeTypes, nodes],
   );
 
   const restoreDefaultEdges = useCallback(() => {
-    const candidateEdges = createDefaultWorkflow().edges;
-    const currentNodes = nodes as StudioNodeType[];
-    const nodeIds = new Set(currentNodes.map((node) => node.id));
-    setEdges((current) => {
-      const next = [...current];
-      for (const edge of candidateEdges) {
-        if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
-          continue;
-        }
-        const result = preflightConnection({
-          nodes: currentNodes,
-          edges: next as StudioEdge[],
-          connection: edge,
-          nodeTypes: localizedNodeTypes,
-          enforceTypeCompatibility: true,
-        });
-        if (result.valid) {
-          next.push(editableEdgeDefaults({ ...edge }));
-        }
-      }
-      return next.length === current.length ? current : next;
-    });
-  }, [localizedNodeTypes, nodes, setEdges]);
+    commitCanvas(restoreDefaultEdgesForCanvas(currentCanvas(), localizedNodeTypes));
+  }, [commitCanvas, currentCanvas, localizedNodeTypes]);
 
   const onReconnect = useCallback<OnReconnect<Edge>>(
     (oldEdge, newConnection) => {
@@ -391,26 +481,23 @@ function StudioCanvas() {
         return;
       }
       setValidationError(null);
-      setEdges((current) =>
-        reconnectEdge(oldEdge, newConnection, current as Edge[], { shouldReplaceId: false }).map((edge) =>
-          edge.id === oldEdge.id ? editableEdgeDefaults({ ...edge, data: { ...(edge.data ?? {}), status: 'ready' } }) : edge,
-        ),
+      const nextEdges = reconnectEdge(oldEdge, newConnection, edges as Edge[], { shouldReplaceId: false }).map((edge) =>
+        edge.id === oldEdge.id ? withEditableEdgeDefaults({ ...edge, data: { ...(edge.data ?? {}), status: 'ready' } }) : edge,
       );
+      commitCanvas({ nodes: nodes as StudioNodeType[], edges: nextEdges as StudioEdge[] });
     },
-    [edges, localizedNodeTypes, nodes, setEdges],
+    [commitCanvas, edges, localizedNodeTypes, nodes],
   );
 
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-      const nodeTypeId = event.dataTransfer.getData('application/dagboard-node');
+  const addNodeAt = useCallback(
+    (nodeTypeId: string, position: { x: number; y: number }) => {
       const definition = localizedNodeTypes.find((item) => item.id === nodeTypeId);
       if (!definition) return;
-      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
       const nextNode: StudioNodeType = {
         id: `${nodeTypeId}-${Date.now()}`,
         type: 'studio',
         position,
+        selected: true,
         data: {
           label: definition.label,
           nodeType: definition.id,
@@ -418,32 +505,48 @@ function StudioCanvas() {
           status: 'idle',
         },
       };
-      setNodes((current) => [...current, nextNode]);
+      commitCanvas({
+        nodes: [...(nodes as StudioNodeType[]).map((node) => ({ ...node, selected: false })), nextNode],
+        edges: (edges as StudioEdge[]).map((edge) => ({ ...edge, selected: false })),
+      }, { selectNodeId: nextNode.id });
     },
-    [localizedNodeTypes, screenToFlowPosition, setNodes],
+    [commitCanvas, edges, localizedNodeTypes, nodes],
+  );
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      const nodeTypeId = event.dataTransfer.getData('application/dagboard-node');
+      addNodeAt(nodeTypeId, screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+    },
+    [addNodeAt, screenToFlowPosition],
   );
 
   const updateParams = useCallback(
     (nodeId: string, params: Record<string, unknown>) => {
-      setNodes((current) =>
-        current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, params: paramsWithPatch(node as StudioNodeType, params) } } : node)),
+      commitCanvas(
+        {
+          nodes: (nodes as StudioNodeType[]).map((node) =>
+            node.id === nodeId ? { ...node, data: { ...node.data, params: paramsWithPatch(node as StudioNodeType, params) } } : node,
+          ),
+          edges: edges as StudioEdge[],
+        },
       );
     },
-    [setNodes],
+    [commitCanvas, edges, nodes],
   );
 
   const loadWorkflow = useCallback(
     async (workflowId: string, workflow?: WorkflowPayload) => {
       const loaded = workflow ?? (await api.getWorkflow(workflowId));
       const canvas = workflowPayloadToCanvas(loaded);
-      setNodes(canvas.nodes);
-      setEdges(canvas.edges);
+      historyRef.current = createCanvasHistory();
+      applyCanvas(canvas);
       setSelectedWorkflowId(workflowId);
-      setSelectedNodeId(null);
       resetRun();
       setBrowserOpen(false);
     },
-    [resetRun, setEdges, setNodes, setSelectedNodeId],
+    [applyCanvas, resetRun],
   );
 
   const openRun = useCallback(
@@ -483,6 +586,205 @@ function StudioCanvas() {
     [runId, setGraphView],
   );
 
+  const selectAll = useCallback(() => {
+    const next = selectAllCanvas(currentCanvas());
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setSelectedNodeId(next.nodes[0]?.id ?? null);
+  }, [currentCanvas, setEdges, setNodes, setSelectedNodeId]);
+
+  const clearSelection = useCallback(() => {
+    const next = clearCanvasSelection(currentCanvas());
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setSelectedNodeId(null);
+    setContextMenu(null);
+    setPaneMenu(null);
+  }, [currentCanvas, setEdges, setNodes, setSelectedNodeId]);
+
+  const copySelection = useCallback((nodeIds?: string[]) => {
+    const clipboard = copySelectionToClipboard(currentCanvas(), nodeIds);
+    if (!clipboard) {
+      return;
+    }
+    clipboardRef.current = clipboard;
+    setCanPaste(true);
+  }, [currentCanvas]);
+
+  const pasteClipboard = useCallback(
+    (anchor?: { x: number; y: number }) => {
+      const result = pasteClipboardToCanvas(currentCanvas(), clipboardRef.current, anchor ? { anchor } : undefined);
+      if (!result.pastedNodeIds.length) {
+        return;
+      }
+      commitCanvas(result, { selectNodeId: result.pastedNodeIds[0] });
+    },
+    [commitCanvas, currentCanvas],
+  );
+
+  const duplicateCurrentSelection = useCallback(
+    (fallbackNodeId?: string) => {
+      const snapshot = currentCanvas();
+      const activeNodeIds = selectedNodeIds(snapshot.nodes);
+      const nodeIds = activeNodeIds.length ? activeNodeIds : fallbackNodeId ? [fallbackNodeId] : [];
+      const clipboard = copySelectionToClipboard(snapshot, nodeIds);
+      if (!clipboard) {
+        return;
+      }
+      const result = pasteClipboardToCanvas(snapshot, clipboard, { offset: { x: 44, y: 44 } });
+      commitCanvas(result, { selectNodeId: result.pastedNodeIds[0] ?? null });
+    },
+    [commitCanvas, currentCanvas],
+  );
+
+  const deleteSelection = useCallback(
+    (fallbackNodeId?: string) => {
+      const snapshot = currentCanvas();
+      const activeNodeIds = selectedNodeIds(snapshot.nodes);
+      const result = deleteSelectionFromCanvas(
+        snapshot,
+        activeNodeIds.length ? activeNodeIds : fallbackNodeId ? [fallbackNodeId] : undefined,
+      );
+      if (!result.deletedNodeIds.length && !result.removedEdgeIds.length) {
+        return;
+      }
+      commitCanvas(result, { deletedNodeIds: result.deletedNodeIds, selectNodeId: null });
+    },
+    [commitCanvas, currentCanvas],
+  );
+
+  const toggleDisabledSelection = useCallback(
+    (fallbackNodeId: string, disabled: boolean) => {
+      const snapshot = currentCanvas();
+      const activeNodeIds = selectedNodeIds(snapshot.nodes);
+      const nodeIds = activeNodeIds.includes(fallbackNodeId) ? activeNodeIds : [fallbackNodeId];
+      commitCanvas({
+        nodes: toggleDisabledForNodes(snapshot.nodes, nodeIds, disabled),
+        edges: snapshot.edges,
+      });
+    },
+    [commitCanvas, currentCanvas],
+  );
+
+  const autoLayoutSelection = useCallback(() => {
+    const snapshot = currentCanvas();
+    const nodeIds = selectedNodeIds(snapshot.nodes);
+    commitCanvas(autoLayoutCanvas(snapshot, nodeIds.length > 1 ? nodeIds : undefined));
+  }, [commitCanvas, currentCanvas]);
+
+  const onNodesChangeWithHistory = useCallback(
+    (changes: NodeChange[]) => {
+      const positionFinished = changes.some((change) => change.type === 'position' && change.dragging === false);
+      setNodes((current) => {
+        const nextNodes = applyNodeChanges(changes, current) as StudioNodeType[];
+        if (positionFinished && dragSnapshotRef.current) {
+          historyRef.current = pushCanvasHistory(historyRef.current, dragSnapshotRef.current, {
+            nodes: nextNodes,
+            edges: edges as StudioEdge[],
+          });
+          dragSnapshotRef.current = null;
+        }
+        return nextNodes;
+      });
+    },
+    [edges, setNodes],
+  );
+
+  const onEdgesChangeWithSelection = useCallback(
+    (changes: EdgeChange[]) => {
+      setEdges((current) => applyEdgeChanges(changes, current) as StudioEdge[]);
+    },
+    [setEdges],
+  );
+
+  const handleSelectionChange = useCallback(
+    ({ nodes: selectedNodes }: { nodes: StudioNodeType[] }) => {
+      const nextSelectedNodeId = selectedNodes.length === 1 ? selectedNodes[0].id : selectedNodes[0]?.id ?? null;
+      if (useStudioStore.getState().selectedNodeId !== nextSelectedNodeId) {
+        setSelectedNodeId(nextSelectedNodeId);
+      }
+    },
+    [setSelectedNodeId],
+  );
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (editableTargetHasFocus(event.target)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      const mod = event.ctrlKey || event.metaKey;
+
+      if (mod && key === 'a') {
+        event.preventDefault();
+        selectAll();
+        return;
+      }
+      if (mod && key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redoCanvas();
+        } else {
+          undoCanvas();
+        }
+        return;
+      }
+      if (mod && key === 'y') {
+        event.preventDefault();
+        redoCanvas();
+        return;
+      }
+      if (mod && key === 'c') {
+        event.preventDefault();
+        copySelection();
+        return;
+      }
+      if (mod && key === 'v') {
+        event.preventDefault();
+        pasteClipboard();
+        return;
+      }
+      if (mod && key === 'd') {
+        event.preventDefault();
+        duplicateCurrentSelection();
+        return;
+      }
+      if (mod && key === 's') {
+        event.preventDefault();
+        void saveWorkflow();
+        return;
+      }
+      if (mod && event.key === 'Enter') {
+        event.preventDefault();
+        void saveAndRun();
+        return;
+      }
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        deleteSelection();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        clearSelection();
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [
+    clearSelection,
+    copySelection,
+    deleteSelection,
+    duplicateCurrentSelection,
+    pasteClipboard,
+    redoCanvas,
+    saveAndRun,
+    saveWorkflow,
+    selectAll,
+    undoCanvas,
+  ]);
+
   return (
     <div className="app-shell">
       <NodePalette nodeTypes={localizedNodeTypes} />
@@ -506,11 +808,23 @@ function StudioCanvas() {
               <Link2 size={16} />
               {t('app.restoreEdges')}
             </button>
+            <button onClick={autoLayoutSelection} title={t('app.autoLayout')}>
+              <LayoutGrid size={16} />
+              {t('app.autoLayout')}
+            </button>
+            <button onClick={undoCanvas} title={t('app.undo')}>
+              <Undo2 size={16} />
+              {t('app.undo')}
+            </button>
+            <button onClick={redoCanvas} title={t('app.redo')}>
+              <Redo2 size={16} />
+              {t('app.redo')}
+            </button>
             <button onClick={toggleGlobalPreviews} title={showNodePreviews ? t('app.hidePreviews') : t('app.showPreviews')}>
               {showNodePreviews ? <Eye size={16} /> : <EyeOff size={16} />}
               {showNodePreviews ? t('app.previewsOn') : t('app.previewsOff')}
             </button>
-            <button onClick={() => void api.saveWorkflow(toWorkflowPayload(nodes as StudioNodeType[], edges))} title={t('app.save')}>
+            <button onClick={() => void saveWorkflow()} title={t('app.save')}>
               <Save size={16} />
               {t('app.save')}
             </button>
@@ -545,46 +859,74 @@ function StudioCanvas() {
           <ReactFlow
             nodes={displayNodes}
             edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
+            onNodesChange={onNodesChangeWithHistory}
+            onEdgesChange={onEdgesChangeWithSelection}
             onConnect={onConnect}
+            onConnectStart={() => {
+              lastConnectionResultRef.current = null;
+              setValidationError(t('app.connectHint'));
+            }}
+            onConnectEnd={() => {
+              if (lastConnectionResultRef.current && !lastConnectionResultRef.current.valid) {
+                setValidationError(`${t('app.connectFailed')} ${lastConnectionResultRef.current.message}`);
+              } else {
+                setValidationError(null);
+              }
+              lastConnectionResultRef.current = null;
+            }}
             onReconnect={onReconnect}
             defaultEdgeOptions={defaultEdgeOptions}
             connectionMode={ConnectionMode.Loose}
             connectionRadius={36}
             connectOnClick
+            deleteKeyCode={null}
             edgesReconnectable
             reconnectRadius={12}
             elevateEdgesOnSelect
             connectionLineStyle={{ stroke: '#80c7f4', strokeWidth: 2.4 }}
-            isValidConnection={(connection) =>
-              preflightConnection({
+            isValidConnection={(connection) => {
+              const result = preflightConnection({
                 nodes: nodes as StudioNodeType[],
                 edges: edges as StudioEdge[],
                 connection,
                 nodeTypes: localizedNodeTypes,
                 enforceTypeCompatibility: true,
-              }).valid
-            }
+              });
+              lastConnectionResultRef.current = result;
+              return result.valid;
+            }}
             onDrop={onDrop}
             onDragOver={(event) => {
               event.preventDefault();
               event.dataTransfer.dropEffect = 'move';
             }}
-            onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+            onNodeDragStart={() => {
+              dragSnapshotRef.current = cloneCanvasSnapshot(currentCanvas());
+            }}
+            onSelectionChange={handleSelectionChange}
+            onNodeClick={(_, node) => {
+              setSelectedNodeId(node.id);
+              setContextMenu(null);
+              setPaneMenu(null);
+            }}
             onNodeContextMenu={(event, node) => {
               event.preventDefault();
               event.stopPropagation();
               setSelectedNodeId(node.id);
+              setPaneMenu(null);
               setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
             }}
             onPaneClick={() => {
-              setSelectedNodeId(null);
-              setContextMenu(null);
+              clearSelection();
             }}
             onPaneContextMenu={(event) => {
               event.preventDefault();
               setContextMenu(null);
+              setPaneMenu({
+                x: event.clientX,
+                y: event.clientY,
+                flowPosition: screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+              });
             }}
             nodeTypes={reactFlowNodeTypes}
             fitView
@@ -592,6 +934,10 @@ function StudioCanvas() {
             <Background />
             <Controls />
           </ReactFlow>
+          <div className="shortcut-hint">
+            <strong>{t('shortcuts.title')}</strong>
+            <span>{t('shortcuts.all')}</span>
+          </div>
           {contextMenu && contextMenuNode ? (
             <NodeContextMenu
               node={contextMenuNode}
@@ -604,28 +950,35 @@ function StudioCanvas() {
                 rename: (nodeId, node) => {
                   const label = window.prompt(t('contextMenu.renamePrompt'), node.data.label);
                   if (label) {
-                    setNodes((current) =>
-                      current.map((item) => (item.id === nodeId ? { ...item, data: { ...item.data, label } } : item)),
-                    );
+                    commitCanvas({
+                      nodes: (nodes as StudioNodeType[]).map((item) =>
+                        item.id === nodeId ? { ...item, data: { ...item.data, label } } : item,
+                      ),
+                      edges: edges as StudioEdge[],
+                    }, { selectNodeId: nodeId });
                   }
                 },
-                duplicate: (nodeId) => {
-                  const result = duplicateNode(nodes as StudioNodeType[], nodeId);
-                  setNodes(result.nodes);
-                  if (result.node) setSelectedNodeId(result.node.id);
-                },
-                delete: (nodeId) => {
-                  const result = deleteNodeAndEdges(nodes as StudioNodeType[], edges as StudioEdge[], nodeId);
-                  setNodes(result.nodes);
-                  setEdges(result.edges);
-                  clearNodeOutputs(result.deletedNodeIds);
-                  setSelectedNodeId(null);
-                },
+                duplicate: (nodeId) => duplicateCurrentSelection(nodeId),
+                delete: (nodeId) => deleteSelection(nodeId),
                 toggleDisabled: (nodeId, disabled) => {
-                  setNodes((current) => toggleNodeDisabled(current as StudioNodeType[], nodeId, disabled));
+                  toggleDisabledSelection(nodeId, disabled);
                 },
                 togglePreview: (nodeId) => toggleNodePreview(nodeId),
               }}
+            />
+          ) : null}
+          {paneMenu ? (
+            <CanvasContextMenu
+              position={{ x: paneMenu.x, y: paneMenu.y }}
+              nodeTypes={localizedNodeTypes}
+              canPaste={canPaste}
+              onAddNode={(nodeTypeId) => addNodeAt(nodeTypeId, paneMenu.flowPosition)}
+              onPaste={() => pasteClipboard(paneMenu.flowPosition)}
+              onSelectAll={selectAll}
+              onAutoLayout={autoLayoutSelection}
+              onRestoreEdges={restoreDefaultEdges}
+              onClearSelection={clearSelection}
+              onClose={() => setPaneMenu(null)}
             />
           ) : null}
         </div>
@@ -644,13 +997,15 @@ function StudioCanvas() {
       </main>
       <InspectorPanel
         selectedNode={selectedNode}
+        selectionSummary={currentSelection}
         nodeTypes={localizedNodeTypes}
         algorithms={algorithmsQuery.data ?? []}
         onUpdate={updateParams}
         onRename={(nodeId, label) => {
-          setNodes((current) =>
-            current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, label } } : node)),
-          );
+          commitCanvas({
+            nodes: (nodes as StudioNodeType[]).map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, label } } : node)),
+            edges: edges as StudioEdge[],
+          }, { selectNodeId: nodeId });
         }}
       />
     </div>

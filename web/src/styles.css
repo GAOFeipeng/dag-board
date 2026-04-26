@@ -231,12 +231,14 @@ button.primary:hover {
 }
 
 .canvas-wrap {
+  position: relative;
   min-height: 0;
   background: #101416;
 }
 
 .react-flow__node {
   font-size: 12px;
+  overflow: visible;
 }
 
 .studio-node {
@@ -246,7 +248,7 @@ button.primary:hover {
   border-radius: 8px;
   background: #20262a;
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .studio-node.selected {
@@ -361,6 +363,7 @@ button.primary:hover {
   line-height: 1.1;
   min-width: 0;
   padding: 6px 7px 5px 16px;
+  overflow: visible;
 }
 
 .node-port-row.source {
@@ -431,6 +434,21 @@ button.primary:hover {
   z-index: 10;
 }
 
+.react-flow__handle.connectingfrom {
+  transform: translate(50%, -50%) scale(1.26);
+  box-shadow: 0 0 0 4px rgba(17, 20, 22, 0.95), 0 0 0 9px rgba(128, 199, 244, 0.45);
+}
+
+.react-flow__handle.connectingto.valid {
+  background: #48c78e;
+  box-shadow: 0 0 0 4px rgba(17, 20, 22, 0.95), 0 0 0 9px rgba(72, 199, 142, 0.48);
+}
+
+.react-flow__handle.connectingto:not(.valid) {
+  background: #ff6b6b;
+  box-shadow: 0 0 0 4px rgba(17, 20, 22, 0.95), 0 0 0 9px rgba(255, 107, 107, 0.42);
+}
+
 .node-port-row.target .node-handle {
   left: -22px;
   top: 50%;
@@ -449,6 +467,69 @@ button.primary:hover {
 .node-port-row.source .node-handle:hover {
   transform: translate(50%, -50%) scale(1.22);
   box-shadow: 0 0 0 3px rgba(17, 20, 22, 0.95), 0 0 0 7px color-mix(in srgb, var(--port-color, #80c7f4) 45%, transparent);
+}
+
+.shortcut-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 8;
+  max-width: min(620px, calc(100% - 24px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #34424a;
+  border-radius: 7px;
+  background: rgba(17, 20, 22, 0.9);
+  color: #9aa6ad;
+  padding: 7px 9px;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.shortcut-hint strong {
+  color: #edf2f4;
+}
+
+.canvas-context-menu button,
+.node-context-menu button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.context-section-title {
+  color: #8bd5ff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 5px 7px 7px;
+}
+
+.context-node-list {
+  display: grid;
+  gap: 4px;
+}
+
+.context-node-list button,
+.canvas-context-menu > button {
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+}
+
+.context-node-list button:hover,
+.canvas-context-menu > button:hover {
+  background: #293137;
+}
+
+.canvas-context-menu button:disabled {
+  color: #69757d;
+  cursor: not-allowed;
+}
+
+.context-separator {
+  height: 1px;
+  margin: 7px 4px;
+  background: #2a3034;
 }
 
 .port-kind-graph {
