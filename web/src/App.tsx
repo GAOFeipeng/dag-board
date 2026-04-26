@@ -8,11 +8,14 @@ import {
   ReactFlow,
   ReactFlowProvider,
   addEdge,
+  reconnectEdge,
   useEdgesState,
   useNodesState,
   useReactFlow,
+  MarkerType,
   type Connection,
   type Edge,
+  type OnReconnect,
   type NodeTypes,
 } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
@@ -48,6 +51,16 @@ const defaults = createDefaultWorkflow();
 const PREVIEW_STORAGE_KEY = 'dagboard.showNodePreviews';
 
 type ContextMenuState = { nodeId: string; x: number; y: number } | null;
+
+function editableEdgeDefaults(edge: Edge): Edge {
+  return {
+    ...edge,
+    className: edge.className ?? 'workflow-edge edge-ready',
+    markerEnd: edge.markerEnd ?? { type: MarkerType.ArrowClosed },
+    interactionWidth: edge.interactionWidth ?? 24,
+    reconnectable: edge.reconnectable ?? true,
+  };
+}
 
 function disabledNodeIds(nodes: StudioNodeType[]): string[] {
   return nodes.filter((node) => node.data.disabled).map((node) => node.id);
@@ -120,6 +133,15 @@ function StudioCanvas() {
     [nodeTypesQuery.data, i18n.resolvedLanguage, i18n.language],
   );
   const reactFlowNodeTypes: NodeTypes = useMemo(() => ({ studio: StudioNode }), []);
+  const defaultEdgeOptions = useMemo(
+    () => ({
+      className: 'workflow-edge edge-ready',
+      markerEnd: { type: MarkerType.ArrowClosed },
+      interactionWidth: 24,
+      reconnectable: true,
+    }),
+    [],
+  );
   const selectedNode = (nodes.find((node) => node.id === selectedNodeId) ?? null) as StudioNodeType | null;
 
   const updateInlineParam = useCallback(
@@ -295,7 +317,36 @@ function StudioCanvas() {
         return;
       }
       setValidationError(null);
-      setEdges((current) => addEdge({ ...connection, id: `${connection.source}-${connection.target}-${Date.now()}` }, current));
+      setEdges((current) =>
+        addEdge(
+          editableEdgeDefaults({ ...connection, id: `${connection.source}-${connection.target}-${Date.now()}` } as Edge),
+          current,
+        ),
+      );
+    },
+    [edges, localizedNodeTypes, nodes, setEdges],
+  );
+
+  const onReconnect = useCallback<OnReconnect<Edge>>(
+    (oldEdge, newConnection) => {
+      const result = preflightConnection({
+        nodes: nodes as StudioNodeType[],
+        edges: edges as StudioEdge[],
+        connection: newConnection,
+        nodeTypes: localizedNodeTypes,
+        ignoreEdgeId: oldEdge.id,
+        enforceTypeCompatibility: true,
+      });
+      if (!result.valid) {
+        setValidationError(result.message);
+        return;
+      }
+      setValidationError(null);
+      setEdges((current) =>
+        reconnectEdge(oldEdge, newConnection, current as Edge[], { shouldReplaceId: false }).map((edge) =>
+          edge.id === oldEdge.id ? editableEdgeDefaults({ ...edge, data: { ...(edge.data ?? {}), status: 'ready' } }) : edge,
+        ),
+      );
     },
     [edges, localizedNodeTypes, nodes, setEdges],
   );
@@ -444,6 +495,12 @@ function StudioCanvas() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onReconnect={onReconnect}
+            defaultEdgeOptions={defaultEdgeOptions}
+            edgesReconnectable
+            reconnectRadius={12}
+            elevateEdgesOnSelect
+            connectionLineStyle={{ stroke: '#80c7f4', strokeWidth: 2.4 }}
             isValidConnection={(connection) =>
               preflightConnection({
                 nodes: nodes as StudioNodeType[],

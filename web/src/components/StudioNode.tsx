@@ -39,14 +39,20 @@ export function StudioNode({ id, data, selected }: NodeProps) {
       {inputPorts.length || outputPorts.length ? (
         <div className="node-ports">
           <div className="node-port-column inputs">
-            {inputPorts.map((port, index) => (
-              <PortRow key={port.id} port={port} index={index} count={inputPorts.length} type="target" />
-            ))}
+            <div className="node-port-column-title">{t('node.inputs')}</div>
+            {inputPorts.length ? (
+              inputPorts.map((port) => <PortRow key={port.id} port={port} type="target" />)
+            ) : (
+              <div className="node-port-empty">{t('node.noInputs')}</div>
+            )}
           </div>
           <div className="node-port-column outputs">
-            {outputPorts.map((port, index) => (
-              <PortRow key={port.id} port={port} index={index} count={outputPorts.length} type="source" />
-            ))}
+            <div className="node-port-column-title">{t('node.outputs')}</div>
+            {outputPorts.length ? (
+              outputPorts.map((port) => <PortRow key={port.id} port={port} type="source" />)
+            ) : (
+              <div className="node-port-empty">{t('node.noOutputs')}</div>
+            )}
           </div>
         </div>
       ) : null}
@@ -78,27 +84,33 @@ export function StudioNode({ id, data, selected }: NodeProps) {
 
 function PortRow({
   port,
-  index,
-  count,
   type,
 }: {
   port: NodePort;
-  index: number;
-  count: number;
   type: 'target' | 'source';
 }) {
   const position = type === 'target' ? Position.Left : Position.Right;
-  const top = `${84 + index * 18}px`;
+  const kindClass = portKindClass(port.kind);
   return (
-    <div className={`node-port-row ${type}`}>
-      <Handle id={port.id} type={type} position={position} className="node-handle" style={{ top }} />
-      <span title={`${port.label} (${port.kind})`}>
-        {port.label}
-        {port.required === false ? '' : '*'}
+    <div className={`node-port-row ${type} ${kindClass}`} title={`${port.label} (${port.kind})`}>
+      <Handle
+        id={port.id}
+        type={type}
+        position={position}
+        className={`node-handle ${type} ${kindClass}`}
+        aria-label={`${type === 'target' ? 'input' : 'output'} ${port.label} ${port.kind}`}
+      />
+      <span>
+        <strong>{port.label}</strong>
+        {port.required === false ? null : <em>{port.min_count && port.min_count > 1 ? `x${port.min_count}` : '*'}</em>}
       </span>
-      {count > 1 ? <small>{port.kind}</small> : null}
+      <small>{port.kind}</small>
     </div>
   );
+}
+
+function portKindClass(kind: string): string {
+  return `port-kind-${kind.replace(/[^a-zA-Z0-9_-]/g, '-').toLowerCase()}`;
 }
 
 function InlineField({

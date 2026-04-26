@@ -171,6 +171,8 @@ function defaultEdge(id: string, source: string, target: string, sourceHandle: s
     targetHandle,
     className: 'workflow-edge edge-ready',
     markerEnd: { type: MarkerType.ArrowClosed },
+    interactionWidth: 24,
+    reconnectable: true,
   };
 }
 
@@ -197,6 +199,8 @@ export function workflowPayloadToCanvas(workflow: WorkflowPayload): { nodes: Stu
       targetHandle: edge.targetHandle ?? null,
       className: 'workflow-edge edge-ready',
       markerEnd: { type: MarkerType.ArrowClosed },
+      interactionWidth: 24,
+      reconnectable: true,
     })),
   };
 }

@@ -18,6 +18,10 @@ export const resources = {
         required: 'required',
         missing: 'missing',
         preview: 'Preview',
+        inputs: 'INPUT',
+        outputs: 'OUTPUT',
+        noInputs: 'No inputs',
+        noOutputs: 'No outputs',
       },
       nodePreview: {
         waiting: 'Run to view output',
@@ -173,6 +177,10 @@ export const resources = {
         required: '必需',
         missing: '缺少',
         preview: '预览',
+        inputs: '输入',
+        outputs: '输出',
+        noInputs: '无输入',
+        noOutputs: '无输出',
       },
       nodePreview: {
         waiting: '运行后查看输出',
@@ -326,6 +334,10 @@ export const resources = {
         required: '必須',
         missing: '不足',
         preview: 'プレビュー',
+        inputs: '入力',
+        outputs: '出力',
+        noInputs: '入力なし',
+        noOutputs: '出力なし',
       },
       nodePreview: {
         waiting: '実行後に出力を表示',
