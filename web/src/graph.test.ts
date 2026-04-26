@@ -1,0 +1,116 @@
+import { describe, expect, it } from 'vitest';
+import * as graphModule from './graph';
+import * as runStateModule from './runState';
+import { createDefaultWorkflow, toWorkflowPayload, wouldCreateCycle } from './graph';
+
+type ValidationResult = {
+  valid: boolean;
+  code?: string;
+  reason?: string;
+  message?: string;
+};
+
+function studioNode(id: string, nodeType: string, disabled = false) {
+  return {
+    id,
+    type: 'studio',
+    position: { x: 0, y: 0 },
+    data: { label: id, nodeType, params: {}, disabled },
+  };
+}
+
+function reasonOf(result: ValidationResult) {
+  return String(result.code ?? result.reason ?? result.message ?? '');
+}
+
+describe('workflow graph helpers', () => {
+  it('detects a cycle before adding a connection', () => {
+    const nodes = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    const edges = [
+      { source: 'a', target: 'b' },
+      { source: 'b', target: 'c' },
+    ];
+    expect(wouldCreateCycle(nodes, edges, 'c', 'a')).toBe(true);
+    expect(wouldCreateCycle(nodes, edges, 'a', 'c')).toBe(false);
+  });
+
+  it('serializes the default workflow with execution node types', () => {
+    const workflow = createDefaultWorkflow();
+    const payload = toWorkflowPayload(workflow.nodes, workflow.edges);
+    expect(payload.nodes.map((node) => node.type)).toContain('structure_generator');
+    expect(payload.edges.length).toBeGreaterThan(0);
+    expect(payload.edges.some((edge) => edge.sourceHandle && edge.targetHandle)).toBe(true);
+  });
+
+  it('preserves per-node preview collapse state in workflow payloads', () => {
+    const workflow = createDefaultWorkflow();
+    workflow.nodes[0].data.previewCollapsed = true;
+    const payload = toWorkflowPayload(workflow.nodes, workflow.edges);
+    expect(payload.nodes[0].data.previewCollapsed).toBe(true);
+  });
+
+  it('validates connections against duplicates, cycles, disabled nodes, and IO types', () => {
+    const validateConnection =
+      (graphModule as Record<string, unknown>).validateConnection ??
+      (runStateModule as Record<string, unknown>).preflightConnection;
+    expect(validateConnection, 'v1.1 must export validateConnection or preflightConnection').toEqual(expect.any(Function));
+
+    const nodes = [
+      studioNode('structure', 'structure_generator'),
+      studioNode('data', 'data_generator'),
+      studioNode('algo', 'algorithm'),
+      studioNode('eval', 'evaluation'),
+      studioNode('view', 'graph_view'),
+      studioNode('disabled', 'algorithm', true),
+    ];
+    const nodeTypes = [
+      { id: 'structure_generator', inputs: [], outputs: ['graph'] },
+      { id: 'data_generator', inputs: ['graph'], outputs: ['data'] },
+      { id: 'algorithm', inputs: ['data'], outputs: ['algorithm_result'] },
+      { id: 'evaluation', inputs: ['data', 'algorithm_result'], outputs: ['evaluation'] },
+      { id: 'graph_view', inputs: ['graph', 'algorithm_result', 'evaluation'], outputs: ['graph_view'] },
+    ];
+    const edges = [
+      { id: 'structure-data', source: 'structure', target: 'data' },
+      { id: 'data-algo', source: 'data', target: 'algo' },
+      { id: 'algo-eval', source: 'algo', target: 'eval' },
+    ];
+    const validate = validateConnection as (input: {
+      nodes: typeof nodes;
+      edges: typeof edges;
+      nodeTypes: typeof nodeTypes;
+      connection: { source: string | null; target: string | null };
+      enforceTypeCompatibility?: boolean;
+    }) => ValidationResult;
+
+    expect(validate({ nodes, edges, nodeTypes, connection: { source: 'data', target: 'eval' } })).toMatchObject({
+      valid: true,
+    });
+
+    const duplicate = validate({ nodes, edges, nodeTypes, connection: { source: 'structure', target: 'data' } });
+    expect(duplicate.valid).toBe(false);
+    expect(reasonOf(duplicate)).toContain('duplicate');
+
+    const cycle = validate({ nodes, edges, nodeTypes, connection: { source: 'eval', target: 'structure' } });
+    expect(cycle.valid).toBe(false);
+    expect(reasonOf(cycle)).toContain('cycle');
+
+    const incompatible = validate({
+      nodes,
+      edges,
+      nodeTypes,
+      enforceTypeCompatibility: true,
+      connection: { source: 'structure', target: 'eval' },
+    });
+    expect(incompatible.valid).toBe(false);
+    expect(['incompatible', 'type_mismatch'].some((code) => reasonOf(incompatible).includes(code))).toBe(true);
+
+    const disabled = validate({ nodes, edges, nodeTypes, connection: { source: 'data', target: 'disabled' } });
+    expect(disabled.valid).toBe(false);
+    expect(reasonOf(disabled)).toContain('disabled');
+
+    const missingEndpoint = validate({ nodes, edges, nodeTypes, connection: { source: null, target: 'data' } });
+    expect(missingEndpoint.valid).toBe(false);
+    expect(reasonOf(missingEndpoint)).toContain('endpoint');
+  });
+});
