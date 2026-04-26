@@ -44,9 +44,11 @@ describe('workflow graph helpers', () => {
       'Notears',
     ]);
     expect(payload.nodes.filter((node) => node.type === 'evaluation')).toHaveLength(3);
+    expect(payload.nodes.filter((node) => node.type === 'evaluation_summary')).toHaveLength(1);
     expect(payload.edges.length).toBeGreaterThan(0);
     expect(payload.edges.some((edge) => edge.sourceHandle && edge.targetHandle)).toBe(true);
     expect(payload.edges.filter((edge) => edge.targetHandle === 'pred_graph')).toHaveLength(3);
+    expect(payload.edges.filter((edge) => edge.target === 'summary')).toHaveLength(3);
   });
 
   it('preserves per-node preview collapse state in workflow payloads', () => {

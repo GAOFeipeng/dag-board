@@ -187,6 +187,12 @@ def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:
                 "position": {"x": 3, "y": 1},
                 "data": {"params": {"mode": "compare", "threshold": 0.2}},
             },
+            {
+                "id": "summary",
+                "type": "evaluation_summary",
+                "position": {"x": 4, "y": 0},
+                "data": {"params": {"primary_metric": "f1", "sort_order": "desc"}},
+            },
         ],
         edges=[
             {"id": "structure-data", "source": "structure", "target": "data", "sourceHandle": "graph", "targetHandle": "graph"},
@@ -196,6 +202,8 @@ def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:
             {"id": "truth-ges", "source": "data", "target": "eval_ges", "sourceHandle": "truth_graph", "targetHandle": "truth_graph"},
             {"id": "pc-eval", "source": "algo_pc", "target": "eval_pc", "sourceHandle": "result_graph", "targetHandle": "pred_graph"},
             {"id": "ges-eval", "source": "algo_ges", "target": "eval_ges", "sourceHandle": "result_graph", "targetHandle": "pred_graph"},
+            {"id": "pc-summary", "source": "eval_pc", "target": "summary", "sourceHandle": "evaluation", "targetHandle": "evaluation"},
+            {"id": "ges-summary", "source": "eval_ges", "target": "summary", "sourceHandle": "evaluation", "targetHandle": "evaluation"},
         ],
     )
 
@@ -206,6 +214,10 @@ def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:
     assert records["algo_ges"].outputs["algorithm_result"]["algorithm"] == "GES"
     assert "shd" in records["eval_pc"].outputs["evaluation"]["metrics"]
     assert "shd" in records["eval_ges"].outputs["evaluation"]["metrics"]
+    summary = records["summary"].outputs["evaluation_summary"]
+    assert summary["summary_meta"]["evaluation_count"] == 2
+    assert [row["rank"] for row in summary["rows"]] == [1, 2]
+    assert "f1" in summary["best_by_metric"]
 
 
 def test_evaluation_compare_accepts_two_graph_like_inputs(tmp_path: Path) -> None:

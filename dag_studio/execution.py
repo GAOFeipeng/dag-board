@@ -212,6 +212,33 @@ def _linear_gaussian_bic(X: np.ndarray, B: np.ndarray) -> dict[str, float]:
     }
 
 
+LOWER_IS_BETTER_METRICS = {"shd", "bic", "sid", "fdr", "fpr", "dag_error"}
+
+
+def _metric_sort_direction(metric: str) -> str:
+    return "asc" if metric.lower() in LOWER_IS_BETTER_METRICS else "desc"
+
+
+def _evaluation_label(source_node_id: str, evaluation: dict[str, Any]) -> str:
+    meta = evaluation.get("eval_meta") if isinstance(evaluation.get("eval_meta"), dict) else {}
+    for key in ("prediction_source", "graph_source"):
+        value = meta.get(key)
+        if isinstance(value, str) and value:
+            if ":" in value:
+                return value.split(":")[-1]
+            return value
+    return source_node_id
+
+
+def _finite_float(value: Any) -> Optional[float]:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        parsed = float(value)
+        return parsed if math.isfinite(parsed) else None
+    return None
+
+
 class WorkflowExecutor:
     """Execute one workflow into one run directory."""
 
@@ -401,6 +428,8 @@ class WorkflowExecutor:
             return self._execute_algorithm(node, parents)
         if node.type == "evaluation":
             return self._execute_evaluation(node, parents, input_edges or [])
+        if node.type == "evaluation_summary":
+            return self._execute_evaluation_summary(node, parents, input_edges or [])
         if node.type == "graph_view":
             return self._execute_graph_view(node, parents)
         raise WorkflowValidationError(f"Unknown node type: {node.type}")
@@ -823,6 +852,104 @@ class WorkflowExecutor:
             summary=payload["metrics"],
         )
         return NodeContext(public={"kind": "evaluation", "evaluation": payload})
+
+    def _execute_evaluation_summary(
+        self,
+        node: WorkflowNode,
+        parents: list[NodeContext],
+        input_edges: list[WorkflowEdge],
+    ) -> NodeContext:
+        params = _node_params(node)
+        selected_metrics = [str(item) for item in params.get("metrics", []) if str(item)]
+        selected_metric_set = set(selected_metrics)
+        primary_metric = str(params.get("primary_metric", "f1"))
+        sort_order = str(params.get("sort_order", "desc"))
+        if sort_order not in {"asc", "desc"}:
+            raise WorkflowValidationError("Evaluation summary sort_order must be `asc` or `desc`.")
+
+        rows: list[dict[str, Any]] = []
+        metric_names: set[str] = set()
+        for index, parent in enumerate(parents):
+            if parent.public.get("kind") != "evaluation":
+                continue
+            evaluation = parent.public.get("evaluation")
+            if not isinstance(evaluation, dict):
+                continue
+            metrics = evaluation.get("metrics")
+            if not isinstance(metrics, dict):
+                continue
+            edge = input_edges[index] if index < len(input_edges) else None
+            source_node_id = edge.source if edge is not None else f"evaluation_{index + 1}"
+            row: dict[str, Any] = {
+                "rank": 0,
+                "source_node_id": source_node_id,
+                "label": _evaluation_label(source_node_id, evaluation),
+                "mode": evaluation.get("eval_meta", {}).get("mode") if isinstance(evaluation.get("eval_meta"), dict) else None,
+            }
+            for key, value in metrics.items():
+                if selected_metric_set and key not in selected_metric_set and key != primary_metric:
+                    continue
+                parsed = _finite_float(value)
+                if parsed is None:
+                    continue
+                row[key] = parsed
+                metric_names.add(key)
+            rows.append(row)
+
+        if not rows:
+            raise WorkflowValidationError("Evaluation summary requires at least one evaluation input.")
+
+        def primary_value(row: dict[str, Any]) -> tuple[int, float]:
+            value = _finite_float(row.get(primary_metric))
+            if value is None:
+                return (1, 0.0)
+            return (0, value)
+
+        rows.sort(key=primary_value, reverse=sort_order == "desc")
+        rows.sort(key=lambda row: primary_value(row)[0])
+        for rank, row in enumerate(rows, start=1):
+            row["rank"] = rank
+
+        best_by_metric: dict[str, dict[str, Any]] = {}
+        for metric in sorted(metric_names):
+            values = [(row, _finite_float(row.get(metric))) for row in rows]
+            values = [(row, value) for row, value in values if value is not None]
+            if not values:
+                continue
+            direction = _metric_sort_direction(metric)
+            best_row, best_value = sorted(values, key=lambda item: item[1], reverse=direction == "desc")[0]
+            best_by_metric[metric] = {
+                "label": best_row["label"],
+                "source_node_id": best_row["source_node_id"],
+                "value": best_value,
+                "direction": "lower_is_better" if direction == "asc" else "higher_is_better",
+            }
+
+        summary = {
+            "rows": rows,
+            "metrics": sorted(metric_names),
+            "primary_metric": primary_metric,
+            "sort_order": sort_order,
+            "best_by_metric": best_by_metric,
+            "summary_meta": {
+                "evaluation_count": len(rows),
+                "ranked_by": primary_metric,
+            },
+        }
+        summary["artifact_ref"] = self.storage.write_artifact_json(
+            self.run_dir,
+            f"{node.id}_evaluation_summary",
+            summary,
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="evaluation_summary",
+            summary={
+                "evaluation_count": len(rows),
+                "primary_metric": primary_metric,
+                "best": best_by_metric.get(primary_metric),
+            },
+        )
+        return NodeContext(public={"kind": "evaluation_summary", "evaluation_summary": summary})
 
     def _graph_likes_from_inputs(
         self,

@@ -137,6 +137,19 @@ export const resources = {
               evaluation: { label: 'Evaluation' },
             },
           },
+          evaluation_summary: {
+            label: 'Evaluation Summary',
+            description: 'Aggregate multiple structure evaluation outputs into one comparison table.',
+            fields: {
+              primary_metric: { label: 'Primary Metric' },
+              sort_order: { label: 'Sort Order' },
+              metrics: { label: 'Metrics' },
+            },
+            ports: {
+              evaluation: { label: 'Evaluations' },
+              evaluation_summary: { label: 'Summary' },
+            },
+          },
         },
       },
     },
@@ -277,6 +290,19 @@ export const resources = {
               evaluation: { label: '评估' },
             },
           },
+          evaluation_summary: {
+            label: '评估汇总',
+            description: '汇总多个结构评价输出，形成一个对比表。',
+            fields: {
+              primary_metric: { label: '主指标' },
+              sort_order: { label: '排序方向' },
+              metrics: { label: '指标' },
+            },
+            ports: {
+              evaluation: { label: '评估' },
+              evaluation_summary: { label: '汇总' },
+            },
+          },
         },
       },
     },
@@ -415,6 +441,19 @@ export const resources = {
               pred_graph: { label: '予測グラフ' },
               data: { label: 'データ' },
               evaluation: { label: '評価' },
+            },
+          },
+          evaluation_summary: {
+            label: '評価サマリー',
+            description: '複数の構造評価出力を 1 つの比較表に集約します。',
+            fields: {
+              primary_metric: { label: '主要指標' },
+              sort_order: { label: '並び順' },
+              metrics: { label: '指標' },
+            },
+            ports: {
+              evaluation: { label: '評価' },
+              evaluation_summary: { label: 'サマリー' },
             },
           },
         },

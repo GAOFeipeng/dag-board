@@ -19,6 +19,7 @@ This public repository only ships official baseline adapters. It does not includ
 - Typed node ports with run-time and pre-run validation.
 - Inline controls for common node parameters.
 - Inline graph and metric previews under nodes.
+- Evaluation summary node for comparing multiple algorithm branches in one run.
 - Right-click node menu for run-to-node, output viewing, rename, duplicate, delete, disable, and preview toggling.
 - Structured run logs, output browser, artifact browser, and matrix preview.
 - Local single-user storage using JSON, JSONL, and NPZ files.
@@ -122,6 +123,7 @@ git push -u origin main
 - 类型化输入/输出端口，连接时和运行前都会校验。
 - 常用参数可直接在节点内部调整。
 - 结构生成器、图展示、结构评价节点支持内联预览。
+- 评估汇总节点可在同一次运行中对比多个算法分支。
 - 节点右键菜单支持运行到此、查看输出、重命名、复制、删除、禁用、预览开关。
 - 底部面板提供结构化日志、每步输出、artifact 列表和矩阵预览。
 - 本地单用户存储，使用 JSON、JSONL 和 NPZ 文件。
@@ -225,6 +227,7 @@ git push -u origin main
 - 型付きポートと、接続時・実行前の検証。
 - 主要パラメータをノード内で直接編集。
 - 構造生成、グラフ表示、構造評価ノードのインラインプレビュー。
+- 評価サマリーノードで、1 回の実行内の複数アルゴリズム分岐を比較。
 - 右クリックメニューで、ここまで実行、出力表示、名前変更、複製、削除、無効化、プレビュー切替。
 - 構造化ログ、ノード出力、artifact、行列プレビュー。
 - JSON、JSONL、NPZ によるローカル単一ユーザー保存。

@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { AlertCircle, CheckCircle2, Clock3, Database, EyeOff, GitBranch, LineChart, PlayCircle, Workflow } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock3, Database, EyeOff, GitBranch, LineChart, PlayCircle, Table2, Workflow } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { NodeField, NodePort, StudioNodeData } from '../types';
 
@@ -8,6 +8,7 @@ const iconByType = {
   data_generator: Database,
   algorithm: PlayCircle,
   evaluation: LineChart,
+  evaluation_summary: Table2,
   graph_view: Workflow,
 };
 
@@ -182,6 +183,25 @@ function renderPreview(output: Record<string, unknown>, nodeId: string) {
               <strong>{Number(value).toFixed(3)}</strong>
             </div>
           ))}
+      </div>
+    );
+  }
+
+  const rows = Array.isArray(output.rows) ? output.rows.filter(isRecord) : [];
+  const primaryMetric = typeof output.primary_metric === 'string' ? output.primary_metric : 'f1';
+  if (rows.length) {
+    return (
+      <div className="inline-summary-table">
+        {rows.slice(0, 5).map((row) => {
+          const label = String(row.label ?? row.source_node_id ?? 'evaluation');
+          const value = typeof row[primaryMetric] === 'number' ? Number(row[primaryMetric]).toFixed(3) : '-';
+          return (
+            <div key={String(row.source_node_id ?? label)}>
+              <span>{row.rank ? `#${row.rank} ${label}` : label}</span>
+              <strong>{primaryMetric}: {value}</strong>
+            </div>
+          );
+        })}
       </div>
     );
   }

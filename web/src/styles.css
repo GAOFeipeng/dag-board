@@ -458,6 +458,39 @@ button.primary:hover {
   font-size: 11px;
 }
 
+.inline-summary-table {
+  display: grid;
+  gap: 5px;
+}
+
+.inline-summary-table div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #2a3034;
+  border-radius: 6px;
+  background: #101416;
+  padding: 5px 6px;
+}
+
+.inline-summary-table span,
+.inline-summary-table strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inline-summary-table span {
+  color: #edf2f4;
+  font-size: 10px;
+}
+
+.inline-summary-table strong {
+  color: #8bd5ff;
+  font-size: 10px;
+}
+
 .inline-json {
   margin: 0;
   max-height: 90px;

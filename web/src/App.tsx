@@ -61,6 +61,7 @@ function previewOutputForNode(output: Record<string, unknown> | undefined): Reco
   if (!output) return null;
   if (isRecord(output.graph)) return output.graph;
   if (isRecord(output.graph_view)) return output.graph_view;
+  if (isRecord(output.evaluation_summary)) return output.evaluation_summary;
   if (isRecord(output.evaluation)) return output.evaluation;
   if (isRecord(output.algorithm_result)) {
     const result = output.algorithm_result as Record<string, unknown>;

@@ -125,6 +125,30 @@ NODE_TYPES = [
             NodeField(name="graph_space", label="Graph Space", kind="select", default="dag", options=["dag", "cpdag"]),
         ],
     ),
+    NodeTypeDefinition(
+        id="evaluation_summary",
+        label="Evaluation Summary",
+        description="Aggregate multiple structure evaluation outputs into one comparison table.",
+        inputs=["evaluation"],
+        outputs=["evaluation_summary"],
+        input_ports=[
+            NodePort(id="evaluation", label="Evaluations", kind="evaluation", required=True, min_count=1, max_count=None),
+        ],
+        output_ports=[NodePort(id="evaluation_summary", label="Summary", kind="evaluation_summary", required=False)],
+        preview=NodePreviewDefinition(enabled_by_default=True, supported_outputs=["evaluation_summary"]),
+        inline_fields=["primary_metric", "sort_order"],
+        fields=[
+            NodeField(
+                name="primary_metric",
+                label="Primary Metric",
+                kind="select",
+                default="f1",
+                options=["f1", "shd", "precision", "recall", "tpr", "fdr", "fpr", "aupr", "bic", "sid"],
+            ),
+            NodeField(name="sort_order", label="Sort Order", kind="select", default="desc", options=["desc", "asc"]),
+            NodeField(name="metrics", label="Metrics", kind="json", default=[]),
+        ],
+    ),
 ]
 
 

@@ -128,6 +128,12 @@ export function createDefaultWorkflow(): { nodes: StudioNode[]; edges: Edge[] } 
       position: { x: 1200, y: 460 },
       data: { label: 'NOTEARS Graph View', nodeType: 'graph_view', params: { compare_mode: 'overlay', threshold: 0.3, top_k: 200 } },
     },
+    {
+      id: 'summary',
+      type: 'studio',
+      position: { x: 1500, y: 240 },
+      data: { label: 'Evaluation Summary', nodeType: 'evaluation_summary', params: { primary_metric: 'f1', sort_order: 'desc', metrics: [] } },
+    },
   ];
   const edges: Edge[] = [
     defaultEdge('structure-data', 'structure', 'data', 'graph', 'graph'),
@@ -149,6 +155,9 @@ export function createDefaultWorkflow(): { nodes: StudioNode[]; edges: Edge[] } 
     defaultEdge('eval-pc-view-pc', 'eval-pc', 'view-pc', 'evaluation', 'evaluation'),
     defaultEdge('eval-ges-view-ges', 'eval-ges', 'view-ges', 'evaluation', 'evaluation'),
     defaultEdge('eval-notears-view-notears', 'eval-notears', 'view-notears', 'evaluation', 'evaluation'),
+    defaultEdge('eval-pc-summary', 'eval-pc', 'summary', 'evaluation', 'evaluation'),
+    defaultEdge('eval-ges-summary', 'eval-ges', 'summary', 'evaluation', 'evaluation'),
+    defaultEdge('eval-notears-summary', 'eval-notears', 'summary', 'evaluation', 'evaluation'),
   ];
   return { nodes, edges };
 }
@@ -186,6 +195,8 @@ export function workflowPayloadToCanvas(workflow: WorkflowPayload): { nodes: Stu
       target: edge.target,
       sourceHandle: edge.sourceHandle ?? null,
       targetHandle: edge.targetHandle ?? null,
+      className: 'workflow-edge edge-ready',
+      markerEnd: { type: MarkerType.ArrowClosed },
     })),
   };
 }

@@ -1,4 +1,4 @@
-import { Box, Database, GitBranch, LineChart, PlayCircle, Workflow } from 'lucide-react';
+import { Box, Database, GitBranch, LineChart, PlayCircle, Table2, Workflow } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { NodeTypeDefinition } from '../types';
 
@@ -7,6 +7,7 @@ const iconByType = {
   data_generator: Database,
   algorithm: PlayCircle,
   evaluation: LineChart,
+  evaluation_summary: Table2,
   graph_view: Workflow,
 };
 
