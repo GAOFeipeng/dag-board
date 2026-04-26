@@ -126,16 +126,16 @@ def _run_castle(name: str, X: np.ndarray, params: dict[str, Any]) -> BaselineRes
     if not hasattr(castle_algorithms, name):
         raise ValueError(f"gCastle baseline is not available: {name}")
     algo_cls = getattr(castle_algorithms, name)
-    threshold = float(params.get("w_threshold", 0.3))
+    threshold = _float_param(params, "w_threshold", 0.3)
     seed = params.get("seed")
-    if seed is not None:
+    if _has_value(seed):
         set_random_seed(int(seed))
     init_params = _supported_kwargs(algo_cls.__init__, _library_params(params))
     start = time.time()
     learner = algo_cls(**init_params)
     learn_params: dict[str, Any] = {}
     if name == "NotearsLowRank":
-        learn_params.setdefault("rank", int(params.get("rank", 2)))
+        learn_params.setdefault("rank", int(params.get("rank") if _has_value(params.get("rank")) else 2))
     elif name == "PC":
         pc_learn_options = _library_params(params)
         learn_params = {
@@ -173,17 +173,15 @@ def _run_castle(name: str, X: np.ndarray, params: dict[str, Any]) -> BaselineRes
 def _run_dagma(X: np.ndarray, params: dict[str, Any]) -> BaselineResult:
     from dagma.linear import DagmaLinear
 
-    threshold = float(params.get("w_threshold", 0.3))
+    threshold = _float_param(params, "w_threshold", 0.3)
     seed = params.get("seed")
-    if seed is not None:
+    if _has_value(seed):
         set_random_seed(int(seed))
-    learner = DagmaLinear(loss_type=str(params.get("loss_type", "l2")), verbose=bool(params.get("verbose", False)))
+    learner = DagmaLinear(
+        loss_type=str(params.get("loss_type") if _has_value(params.get("loss_type")) else "l2"),
+        verbose=bool(params.get("verbose", False)),
+    )
     fit_params = _supported_kwargs(learner.fit, _library_params(params))
-    fit_params.setdefault("lambda1", float(params.get("lambda1", 0.03)))
-    fit_params.setdefault("w_threshold", threshold)
-    fit_params.setdefault("T", int(params.get("T", 5)))
-    fit_params.setdefault("warm_iter", int(params.get("warm_iter", 1000)))
-    fit_params.setdefault("max_iter", int(params.get("max_iter", 5000)))
     start = time.time()
     W_est = np.asarray(learner.fit(X, **fit_params), dtype=float)
     runtime = time.time() - start
@@ -204,9 +202,10 @@ def _run_dagma(X: np.ndarray, params: dict[str, Any]) -> BaselineResult:
 
 
 def _library_params(params: dict[str, Any]) -> dict[str, Any]:
-    values = dict(params.get("library_params") or {})
+    raw_library_params = params.get("library_params")
+    values = dict(raw_library_params) if isinstance(raw_library_params, dict) else {}
     for key, value in params.items():
-        if key not in {"algorithm_id", "library_params", "module", "seed"} and value is not None:
+        if key not in {"algorithm_id", "library_params", "module", "seed"} and _has_value(value):
             values.setdefault(key, value)
     return values
 
@@ -215,12 +214,21 @@ def _supported_kwargs(callable_obj: Any, params: dict[str, Any]) -> dict[str, An
     try:
         signature = inspect.signature(callable_obj)
     except (TypeError, ValueError):
-        return {key: value for key, value in params.items() if value is not None}
+        return {key: value for key, value in params.items() if _has_value(value)}
     if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()):
-        return {key: value for key, value in params.items() if value is not None}
+        return {key: value for key, value in params.items() if _has_value(value)}
     accepted = set(signature.parameters)
     accepted.discard("self")
-    return {key: value for key, value in params.items() if key in accepted and value is not None}
+    return {key: value for key, value in params.items() if key in accepted and _has_value(value)}
+
+
+def _has_value(value: Any) -> bool:
+    return value is not None and value != ""
+
+
+def _float_param(params: dict[str, Any], key: str, default: float) -> float:
+    value = params.get(key)
+    return float(value) if _has_value(value) else default
 
 
 def _extract_castle_matrix(learner: Any) -> np.ndarray:

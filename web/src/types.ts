@@ -10,6 +10,7 @@ export type NodeField = {
   default: unknown;
   options: unknown[];
   description?: string;
+  placeholder?: string;
 };
 
 export type NodePort = {

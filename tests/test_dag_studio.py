@@ -355,6 +355,23 @@ def test_algorithm_node_uses_library_wrappers(tmp_path: Path, algorithm_id: str)
     assert result["matrix_summary"]["W_est"]["shape"] == [5, 5]
 
 
+def test_algorithm_blank_params_do_not_override_official_defaults(tmp_path: Path) -> None:
+    storage = LocalStudioStorage(tmp_path)
+    _run_id, run_dir = storage.create_run_dir("notears-defaults")
+    workflow = _workflow("Notears")
+    for node in workflow.nodes:
+        if node.id == "algo":
+            node.data["params"] = {"algorithm_id": "Notears"}
+    workflow.nodes = [node for node in workflow.nodes if node.id in {"structure", "data", "algo"}]
+    workflow.edges = [edge for edge in workflow.edges if edge.target in {"data", "algo"}]
+
+    records = WorkflowExecutor(storage, run_dir).execute(workflow)
+
+    result = records["algo"].outputs["algorithm_result"]
+    assert records["algo"].status == "success"
+    assert result["params"] == {}
+
+
 def test_api_workflow_run_and_events(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import dag_studio.main as main
 

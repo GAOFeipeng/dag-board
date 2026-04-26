@@ -1,4 +1,3 @@
-import { Network } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 type JsonRecord = Record<string, unknown>;
@@ -39,7 +38,6 @@ export function GraphPreview({
   return (
     <section className="graph-preview">
       <div className="panel-heading small">
-        <Network size={15} />
         <span>{t('panels.outputPreview')}</span>
         <strong>{headingDetail}</strong>
       </div>

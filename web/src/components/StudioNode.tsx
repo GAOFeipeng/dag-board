@@ -133,6 +133,7 @@ function InlineField({
       <span>{field.label}</span>
       {field.kind === 'select' && field.options.length ? (
         <select value={String(current ?? '')} onChange={(event) => update(event.target.value)}>
+          {field.default === null || field.default === undefined ? <option value="">{field.placeholder || 'official default'}</option> : null}
           {field.options.map((option) => (
             <option key={String(option)} value={String(option)}>
               {String(option)}
@@ -145,14 +146,19 @@ function InlineField({
         <input
           type="number"
           step={field.kind === 'integer' ? 1 : 0.01}
-          value={typeof current === 'number' ? current : Number(current ?? 0)}
+          value={current === null || current === undefined || current === '' ? '' : Number(current)}
+          placeholder={field.placeholder}
           onChange={(event) => {
+            if (event.target.value === '') {
+              update(null);
+              return;
+            }
             const parsed = field.kind === 'integer' ? Number.parseInt(event.target.value, 10) : Number.parseFloat(event.target.value);
-            update(Number.isFinite(parsed) ? parsed : field.default);
+            update(Number.isFinite(parsed) ? parsed : null);
           }}
         />
       ) : (
-        <input value={String(current ?? '')} onChange={(event) => update(event.target.value)} />
+        <input value={String(current ?? '')} placeholder={field.placeholder} onChange={(event) => update(event.target.value)} />
       )}
     </label>
   );

@@ -35,6 +35,7 @@ function FieldEditor({
   if (field.kind === 'select') {
     return (
       <select value={String(value ?? field.default ?? '')} onChange={(event) => onChange(event.target.value)}>
+        {field.default === null || field.default === undefined ? <option value="">{field.placeholder || 'official default'}</option> : null}
         {field.options.map((option) => (
           <option key={String(option)} value={String(option)}>
             {String(option)}
@@ -51,21 +52,34 @@ function FieldEditor({
       <input
         type="number"
         step={field.kind === 'integer' ? 1 : 0.01}
-        value={Number(value ?? field.default ?? 0)}
-        onChange={(event) => onChange(field.kind === 'integer' ? Number.parseInt(event.target.value, 10) : Number.parseFloat(event.target.value))}
+        value={value === null || value === undefined || value === '' ? '' : Number(value)}
+        placeholder={field.placeholder}
+        onChange={(event) => {
+          if (event.target.value === '') {
+            onChange(null);
+            return;
+          }
+          const parsed = field.kind === 'integer' ? Number.parseInt(event.target.value, 10) : Number.parseFloat(event.target.value);
+          onChange(Number.isFinite(parsed) ? parsed : null);
+        }}
       />
     );
   }
   if (field.kind === 'json') {
+    const textValue =
+      value === null || value === undefined || value === ''
+        ? ''
+        : JSON.stringify(value ?? field.default ?? {}, null, 2);
     return (
       <textarea
         rows={4}
-        value={JSON.stringify(value ?? field.default ?? {}, null, 2)}
-        onChange={(event) => onChange(parseJson(event.target.value, value ?? field.default))}
+        value={textValue}
+        placeholder={field.placeholder}
+        onChange={(event) => onChange(event.target.value.trim() ? parseJson(event.target.value, value ?? field.default) : null)}
       />
     );
   }
-  return <input value={String(value ?? '')} onChange={(event) => onChange(event.target.value)} />;
+  return <input value={String(value ?? '')} placeholder={field.placeholder} onChange={(event) => onChange(event.target.value)} />;
 }
 
 export function InspectorPanel({

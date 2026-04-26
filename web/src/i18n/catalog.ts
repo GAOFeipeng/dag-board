@@ -52,6 +52,7 @@ function localizeNodeField(
     ...field,
     label: translateText(`${fieldKey}.label`, field.label, t),
     description: translateOptionalText(`${fieldKey}.description`, field.description, t, exists),
+    placeholder: translateOptionalText(`${fieldKey}.placeholder`, field.placeholder, t, exists),
   };
 }
 

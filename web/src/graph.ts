@@ -78,19 +78,19 @@ export function createDefaultWorkflow(): { nodes: StudioNode[]; edges: Edge[] } 
       id: 'pc',
       type: 'studio',
       position: { x: 600, y: 20 },
-      data: { label: 'PC Baseline', nodeType: 'algorithm', params: { algorithm_id: 'PC', alpha: 0.05, variant: 'original', w_threshold: 0.3, seed: 42 } },
+      data: { label: 'PC Baseline', nodeType: 'algorithm', params: { algorithm_id: 'PC' } },
     },
     {
       id: 'ges',
       type: 'studio',
       position: { x: 600, y: 240 },
-      data: { label: 'GES Baseline', nodeType: 'algorithm', params: { algorithm_id: 'GES', criterion: 'bic', w_threshold: 0.3, seed: 42 } },
+      data: { label: 'GES Baseline', nodeType: 'algorithm', params: { algorithm_id: 'GES' } },
     },
     {
       id: 'notears',
       type: 'studio',
       position: { x: 600, y: 460 },
-      data: { label: 'NOTEARS Baseline', nodeType: 'algorithm', params: { algorithm_id: 'Notears', lambda1: 0.1, max_iter: 100, w_threshold: 0.3, seed: 42 } },
+      data: { label: 'NOTEARS Baseline', nodeType: 'algorithm', params: { algorithm_id: 'Notears' } },
     },
     {
       id: 'eval-pc',

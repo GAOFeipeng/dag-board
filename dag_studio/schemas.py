@@ -78,6 +78,7 @@ class NodeField(BaseModel):
     default: Any = None
     options: List[Any] = Field(default_factory=list)
     description: str = ""
+    placeholder: str = ""
 
 
 class NodePort(BaseModel):
