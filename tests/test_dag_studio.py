@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import time
 from pathlib import Path
 from typing import Any
@@ -103,10 +104,10 @@ def _start_run(
 def _wait_for_run(client: TestClient, run_id: str, timeout: float = 10.0) -> dict[str, Any]:
     deadline = time.time() + timeout
     manifest = client.get(f"/api/runs/{run_id}").json()
-    while manifest["status"] not in {"completed", "failed"} and time.time() < deadline:
+    while manifest["status"] not in {"completed", "failed", "cancelled"} and time.time() < deadline:
         time.sleep(0.1)
         manifest = client.get(f"/api/runs/{run_id}").json()
-    assert manifest["status"] in {"completed", "failed"}
+    assert manifest["status"] in {"completed", "failed", "cancelled"}
     return manifest
 
 
@@ -677,3 +678,193 @@ def test_artifact_index_list_and_npz_preview_api(tmp_path: Path, monkeypatch: py
     assert payload["shape"] == array_summaries[array_name]["shape"]
     values = payload.get("values", payload.get("data"))
     assert len(values) <= 2
+
+
+def test_data_import_csv_and_npz_outputs_data_and_optional_graph(tmp_path: Path) -> None:
+    storage = LocalStudioStorage(tmp_path)
+
+    csv_import = storage.save_import_file("samples.csv", b"A,B\n1,2\n3,4\n")
+    _run_id, run_dir = storage.create_run_dir("csv-import")
+    csv_workflow = WorkflowDefinition(
+        name="csv import",
+        nodes=[
+            {"id": "import", "type": "data_import", "data": {"params": {"import_id": csv_import["import_id"], "has_header": True}}},
+        ],
+    )
+    records = WorkflowExecutor(storage, run_dir).execute(csv_workflow)
+    data = records["import"].outputs["data"]
+    assert records["import"].status == "success"
+    assert data["feature_order"] == ["A", "B"]
+    assert data["matrix_summary"]["X"]["shape"] == [2, 2]
+
+    buffer = io.BytesIO()
+    np.savez(buffer, X=np.ones((3, 2)), B_true=np.array([[0, 1], [0, 0]]), feature_order=np.array(["L", "R"]))
+    npz_import = storage.save_import_file("samples.npz", buffer.getvalue())
+    _run_id, run_dir = storage.create_run_dir("npz-import")
+    npz_workflow = WorkflowDefinition(
+        name="npz import",
+        nodes=[
+            {"id": "import", "type": "data_import", "data": {"params": {"import_id": npz_import["import_id"]}}},
+            {"id": "view", "type": "graph_view", "data": {"params": {"compare_mode": "single"}}},
+        ],
+        edges=[
+            {"source": "import", "target": "view", "sourceHandle": "graph", "targetHandle": "graph"},
+        ],
+    )
+    records = WorkflowExecutor(storage, run_dir).execute(npz_workflow)
+    assert records["view"].status == "success"
+    assert records["view"].outputs["graph_view"]["edges"]
+
+
+def test_experiment_sweep_expands_algorithms_grid_and_writes_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_baseline(name: str, X: np.ndarray, params: dict[str, Any]) -> BaselineResult:
+        W = np.zeros((X.shape[1], X.shape[1]), dtype=float)
+        W[0, 1] = 0.8
+        return BaselineResult(
+            W_est=W,
+            B_est=(W != 0).astype(int),
+            edge_scores=np.abs(W),
+            provider="test",
+            graph_space="dag",
+            runtime=0.01,
+            is_dag=True,
+            params={key: value for key, value in params.items() if key != "algorithm_id"},
+        )
+
+    import dag_studio.execution as execution
+
+    monkeypatch.setattr(execution, "run_official_baseline", fake_baseline)
+    storage = LocalStudioStorage(tmp_path)
+    _run_id, run_dir = storage.create_run_dir("sweep")
+    workflow = WorkflowDefinition(
+        name="sweep",
+        nodes=[
+            {"id": "structure", "type": "structure_generator", "data": {"params": {"d": 4, "s0": 2, "seed": 51}}},
+            {"id": "data", "type": "data_generator", "data": {"params": {"n_samples": 25, "seed": 51}}},
+            {
+                "id": "sweep",
+                "type": "experiment_sweep",
+                "data": {
+                    "params": {
+                        "algorithms": ["PC", "GES"],
+                        "param_grid": {"PC": {"alpha": [0.01, 0.05]}, "GES": {"criterion": ["bic"]}},
+                        "seeds": [1, 2],
+                        "metrics": ["shd", "f1", "precision", "recall", "aupr"],
+                        "threshold": 0.3,
+                    }
+                },
+            },
+        ],
+        edges=[
+            {"source": "structure", "target": "data", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "data", "target": "sweep", "sourceHandle": "data", "targetHandle": "data"},
+            {"source": "data", "target": "sweep", "sourceHandle": "graph", "targetHandle": "graph"},
+        ],
+    )
+
+    records = WorkflowExecutor(storage, run_dir).execute(workflow)
+
+    summary = records["sweep"].outputs["evaluation_summary"]
+    assert records["sweep"].status == "success"
+    assert summary["summary_meta"]["row_count"] == 6
+    assert {row["algorithm"] for row in summary["rows"]} == {"PC", "GES"}
+    assert summary["csv_ref"]["kind"] == "csv"
+    assert "f1" in summary["best_by_metric"]
+
+
+def test_graph_editor_applies_edits_and_rejects_cycles(tmp_path: Path) -> None:
+    storage = LocalStudioStorage(tmp_path)
+    _run_id, run_dir = storage.create_run_dir("graph-editor")
+    workflow = WorkflowDefinition(
+        name="graph editor",
+        nodes=[
+            {"id": "structure", "type": "structure_generator", "data": {"params": {"d": 3, "s0": 0, "seed": 61}}},
+            {
+                "id": "edit",
+                "type": "graph_editor",
+                "data": {"params": {"edits": [{"op": "set_edge", "source": "X1", "target": "X2", "weight": 1.2}]}},
+            },
+        ],
+        edges=[
+            {"source": "structure", "target": "edit", "sourceHandle": "graph", "targetHandle": "graph"},
+        ],
+    )
+    records = WorkflowExecutor(storage, run_dir).execute(workflow)
+    assert records["edit"].status == "success"
+    assert records["edit"].outputs["graph"]["graph_meta"]["s0"] == 1
+
+    _run_id, run_dir = storage.create_run_dir("graph-editor-cycle")
+    workflow.nodes[1].data["params"] = {
+        "edits": [
+            {"op": "set_edge", "source": "X1", "target": "X2", "weight": 1.0},
+            {"op": "set_edge", "source": "X2", "target": "X1", "weight": 1.0},
+        ]
+    }
+    with pytest.raises(WorkflowExecutionError) as exc_info:
+        WorkflowExecutor(storage, run_dir).execute(workflow)
+    assert exc_info.value.records["edit"].status == "failed"
+    assert "cyclic" in (exc_info.value.records["edit"].error or "")
+
+
+def test_run_compare_csv_report_and_import_api(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _studio_client(tmp_path, monkeypatch)
+
+    uploaded = client.post("/api/imports", files={"file": ("x.csv", b"A,B\n1,2\n", "text/csv")})
+    assert uploaded.status_code == 200
+    assert uploaded.json()["import_id"]
+    assert client.get("/api/imports").json()
+
+    run_id = _start_run(client, _workflow())
+    manifest = _wait_for_run(client, run_id)
+    assert manifest["status"] == "completed"
+
+    compared = client.get("/api/run-compare", params=[("run_ids", run_id)])
+    assert compared.status_code == 200
+    assert compared.json()["row_count"] >= 1
+
+    exported = client.get("/api/run-compare/export.csv", params=[("run_ids", run_id)])
+    assert exported.status_code == 200
+    assert "run_id" in exported.text
+
+    report = client.post(f"/api/reports/from-run/{run_id}")
+    assert report.status_code == 200
+    artifact_ids = {
+        item["artifact_id"]: item["kind"]
+        for item in client.get(f"/api/runs/{run_id}/artifacts").json()
+    }
+    assert report.json()["markdown"]["artifact_id"] in artifact_ids
+    assert report.json()["html"]["artifact_id"] in artifact_ids
+    assert {"md", "html"} <= set(artifact_ids.values())
+
+
+def test_cancel_marks_remaining_nodes_cancelled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def slow_baseline(name: str, X: np.ndarray, params: dict[str, Any]) -> BaselineResult:
+        time.sleep(0.5)
+        W = np.zeros((X.shape[1], X.shape[1]), dtype=float)
+        return BaselineResult(
+            W_est=W,
+            B_est=np.zeros_like(W, dtype=int),
+            edge_scores=W,
+            provider="test",
+            graph_space="dag",
+            runtime=0.5,
+            is_dag=True,
+            params={},
+        )
+
+    import dag_studio.execution as execution
+
+    monkeypatch.setattr(execution, "run_official_baseline", slow_baseline)
+    client = _studio_client(tmp_path, monkeypatch)
+    workflow = _workflow()
+    run_id = _start_run(client, workflow)
+    time.sleep(0.2)
+    cancelled = client.post(f"/api/runs/{run_id}/cancel")
+    assert cancelled.status_code == 200
+    manifest = _wait_for_run(client, run_id, timeout=5.0)
+    assert manifest["status"] == "cancelled"
+    assert any(
+        (event.get("type") or event.get("event")) in {"run.cancelled", "cancelled"}
+        for event in manifest["events"]
+    )
+    assert any(record["status"] == "cancelled" for record in manifest["node_states"].values())

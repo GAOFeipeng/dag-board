@@ -51,8 +51,10 @@ class LocalStudioStorage:
         self.root = Path(root) if root is not None else repo_root / "results" / "dagboard"
         self.workflows_dir = self.root / "workflows"
         self.runs_dir = self.root / "runs"
+        self.imports_dir = self.root / "imports"
         self.workflows_dir.mkdir(parents=True, exist_ok=True)
         self.runs_dir.mkdir(parents=True, exist_ok=True)
+        self.imports_dir.mkdir(parents=True, exist_ok=True)
 
     def save_workflow(self, workflow: WorkflowDefinition) -> WorkflowDefinition:
         now = utc_now()
@@ -145,6 +147,53 @@ class LocalStudioStorage:
     def read_json(self, path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
 
+    def save_import_file(self, filename: str, content: bytes) -> dict:
+        suffix = Path(filename).suffix.lower()
+        if suffix not in {".csv", ".npy", ".npz"}:
+            raise ValueError("Unsupported import file type. Use CSV, NPY, or NPZ.")
+        import_id = f"{slugify(Path(filename).stem)}-{uuid.uuid4().hex[:8]}"
+        self._validate_storage_id(import_id, "import id")
+        import_dir = self.imports_dir / import_id
+        import_dir.mkdir(parents=True, exist_ok=False)
+        safe_name = f"source{suffix}"
+        path = import_dir / safe_name
+        path.write_bytes(content)
+        meta = {
+            "import_id": import_id,
+            "filename": filename,
+            "suffix": suffix.lstrip("."),
+            "rel_path": str(path.resolve().relative_to(self.root.resolve())),
+            "size": path.stat().st_size,
+            "created_at": utc_now().isoformat(),
+        }
+        self.write_json(import_dir / "import.json", meta)
+        return meta
+
+    def list_imports(self) -> list[dict]:
+        rows: list[dict] = []
+        for path in sorted(self.imports_dir.glob("*/import.json"), reverse=True):
+            try:
+                rows.append(self.read_json(path))
+            except json.JSONDecodeError:
+                continue
+        return rows
+
+    def get_import(self, import_id: str) -> dict:
+        self._validate_storage_id(import_id, "import id")
+        path = (self.imports_dir / import_id / "import.json").resolve()
+        self._ensure_under(self.imports_dir.resolve(), path)
+        if not path.exists():
+            raise FileNotFoundError(f"Import not found: {import_id}")
+        return self.read_json(path)
+
+    def resolve_import_path(self, import_id: str) -> Path:
+        meta = self.get_import(import_id)
+        path = (self.root / str(meta["rel_path"])).resolve()
+        self._ensure_under((self.imports_dir / import_id).resolve(), path)
+        if not path.exists():
+            raise FileNotFoundError(f"Import file not found: {import_id}")
+        return path
+
     def write_npz(
         self,
         run_dir: Path,
@@ -211,6 +260,43 @@ class LocalStudioStorage:
         )
         return {
             "kind": "json",
+            "path": record.rel_path,
+            "artifact_id": record.artifact_id,
+            "output_kind": record.output_kind,
+        }
+
+    def write_artifact_text(
+        self,
+        run_dir: Path,
+        artifact_name: str,
+        text: str,
+        *,
+        kind: str,
+        node_id: Optional[str] = None,
+        node_type: Optional[str] = None,
+        output_kind: Optional[str] = None,
+        summary: Optional[Dict[str, Any]] = None,
+    ) -> dict:
+        if kind not in {"csv", "md", "html"}:
+            raise ValueError(f"Unsupported text artifact kind: {kind}")
+        run_dir = self._checked_run_dir_path(run_dir)
+        artifacts_dir = run_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = slugify(artifact_name)
+        path = artifacts_dir / f"{safe_name}.{kind}"
+        path.write_text(text, encoding="utf-8")
+        record = self.register_artifact(
+            run_dir=run_dir,
+            path=path,
+            name=safe_name,
+            kind=kind,
+            node_id=node_id,
+            node_type=node_type,
+            output_kind=output_kind,
+            summary=summary or {},
+        )
+        return {
+            "kind": kind,
             "path": record.rel_path,
             "artifact_id": record.artifact_id,
             "output_kind": record.output_kind,
@@ -287,6 +373,8 @@ class LocalStudioStorage:
                     for key in data.files
                 }
             return {"artifact": record.model_dump(mode="json"), "arrays": arrays}
+        if record.kind in {"csv", "md", "html"}:
+            return {"artifact": record.model_dump(mode="json"), "content": path.read_text(encoding="utf-8")}
         raise FileNotFoundError(f"Unsupported artifact kind: {record.kind}")
 
     def preview_artifact(
@@ -457,7 +545,7 @@ class LocalStudioStorage:
             return []
         records: list[ArtifactRecord] = []
         for path in sorted(artifacts_dir.rglob("*")):
-            if not path.is_file() or path.suffix.lower() not in {".json", ".npz"}:
+            if not path.is_file() or path.suffix.lower() not in {".json", ".npz", ".csv", ".md", ".html"}:
                 continue
             kind = path.suffix.lower().lstrip(".")
             stat = path.stat()

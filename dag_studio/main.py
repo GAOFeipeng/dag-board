@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import html
+import io
 import json
+from pathlib import Path
 from typing import Optional
 
-from fastapi import Body, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
@@ -84,6 +88,20 @@ def run_workflow(workflow_id: str, options: Optional[RunOptions] = Body(default=
     return jobs.start_run(workflow, options)
 
 
+@app.post("/api/imports")
+async def upload_import(file: UploadFile) -> dict:
+    try:
+        content = await file.read()
+        return storage.save_import_file(file.filename or "import.dat", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/imports")
+def list_imports() -> list[dict]:
+    return storage.list_imports()
+
+
 @app.get("/api/runs")
 def list_runs() -> list[dict]:
     return jobs.list_runs()
@@ -93,6 +111,56 @@ def list_runs() -> list[dict]:
 def get_run(run_id: str) -> RunManifest:
     try:
         return jobs.get_run(run_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/runs/{run_id}/cancel")
+def cancel_run(run_id: str) -> RunManifest:
+    try:
+        return jobs.cancel_run(run_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/run-compare")
+def compare_runs(run_ids: list[str] = Query(default=[])) -> dict:
+    try:
+        return _compare_runs(run_ids)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/run-compare/export.csv", response_class=PlainTextResponse)
+def export_run_compare_csv(run_ids: list[str] = Query(default=[])) -> PlainTextResponse:
+    payload = compare_runs(run_ids)
+    rows = payload.get("rows", [])
+    columns = sorted({key for row in rows for key in row.keys()}) if isinstance(rows, list) else []
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({column: row.get(column, "") for column in columns})
+    return PlainTextResponse(buffer.getvalue(), media_type="text/csv")
+
+
+@app.post("/api/reports/from-run/{run_id}")
+def report_from_run(run_id: str) -> dict:
+    try:
+        manifest = jobs.get_run(run_id)
+        run_dir = Path(manifest.run_dir)
+        markdown, html_text = _render_run_report(manifest)
+        md_ref = storage.write_artifact_text(run_dir, "run_report", markdown, kind="md", output_kind="report", summary={"run_id": run_id})
+        html_ref = storage.write_artifact_text(run_dir, "run_report", html_text, kind="html", output_kind="report", summary={"run_id": run_id})
+        report = {"run_id": run_id, "markdown": md_ref, "html": html_ref}
+        report["artifact_ref"] = storage.write_artifact_json(run_dir, "run_report_manifest", report, output_kind="report", summary={"run_id": run_id})
+        return report
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -218,9 +286,58 @@ async def run_events(websocket: WebSocket, run_id: str) -> None:
                     await websocket.send_json(event.model_dump(mode="json"))
                     last_index = event.index
 
-            if manifest.status in {"completed", "failed"} and last_index >= len(manifest.events) - 1:
+            if manifest.status in {"completed", "failed", "cancelled"} and last_index >= len(manifest.events) - 1:
                 await websocket.close()
                 return
             await asyncio.sleep(0.2)
     except WebSocketDisconnect:
         return
+
+
+def _compare_runs(run_ids: list[str]) -> dict:
+    rows: list[dict] = []
+    for run_id in run_ids:
+        manifest = jobs.get_run(run_id)
+        for node_id, record in manifest.node_states.items():
+            output = record.outputs or {}
+            summary = output.get("evaluation_summary") if isinstance(output.get("evaluation_summary"), dict) else None
+            evaluation = output.get("evaluation") if isinstance(output.get("evaluation"), dict) else None
+            if summary and isinstance(summary.get("rows"), list):
+                for row in summary["rows"]:
+                    if isinstance(row, dict):
+                        rows.append({"run_id": run_id, "workflow_name": manifest.workflow_name, "node_id": node_id, **row})
+            if evaluation and isinstance(evaluation.get("metrics"), dict):
+                rows.append({"run_id": run_id, "workflow_name": manifest.workflow_name, "node_id": node_id, **evaluation["metrics"]})
+    return {"run_ids": run_ids, "rows": rows, "row_count": len(rows)}
+
+
+def _render_run_report(manifest: RunManifest) -> tuple[str, str]:
+    lines = [
+        f"# DAGBoard Run Report",
+        "",
+        f"- Run: `{manifest.run_id}`",
+        f"- Workflow: `{manifest.workflow_name}`",
+        f"- Status: `{manifest.status}`",
+        "",
+        "## Events",
+    ]
+    for event in manifest.events[-100:]:
+        lines.append(f"- {event.timestamp.isoformat()} `{event.type or event.event}` {event.message}")
+    lines.append("")
+    lines.append("## Node Outputs")
+    for node_id, record in manifest.node_states.items():
+        lines.append(f"### {node_id}")
+        lines.append(f"- Type: `{record.node_type}`")
+        lines.append(f"- Status: `{record.status}`")
+        output = record.outputs or {}
+        if isinstance(output.get("evaluation_summary"), dict):
+            lines.append("```json")
+            lines.append(json.dumps(output["evaluation_summary"].get("rows", []), ensure_ascii=False, indent=2)[:4000])
+            lines.append("```")
+        elif isinstance(output.get("evaluation"), dict):
+            lines.append("```json")
+            lines.append(json.dumps(output["evaluation"].get("metrics", {}), ensure_ascii=False, indent=2))
+            lines.append("```")
+    markdown = "\n".join(lines) + "\n"
+    html_body = "".join(f"<p>{html.escape(line)}</p>" for line in markdown.splitlines())
+    return markdown, f"<!doctype html><html><head><meta charset='utf-8'><title>DAGBoard Report</title></head><body>{html_body}</body></html>"

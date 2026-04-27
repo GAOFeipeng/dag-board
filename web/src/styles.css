@@ -553,6 +553,10 @@ button.primary:hover {
   --port-color: #ff9f68;
 }
 
+.port-kind-report {
+  --port-color: #8bd5ff;
+}
+
 .inline-fields {
   display: grid;
   gap: 6px;
@@ -591,6 +595,30 @@ button.primary:hover {
   width: 16px;
   height: 16px;
   justify-self: start;
+}
+
+.file-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.file-upload-row input {
+  min-width: 0;
+  width: 100%;
+}
+
+.inspector-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
+.inspector-actions button {
+  min-height: 30px;
+  padding: 0 9px;
 }
 
 .inline-preview {
@@ -777,7 +805,8 @@ button.primary:hover {
   border-color: #48c78e;
 }
 
-.status-failed {
+.status-failed,
+.status-cancelled {
   border-color: #ff6b6b;
 }
 
@@ -877,6 +906,34 @@ button.primary:hover {
   white-space: nowrap;
 }
 
+.run-browser-row {
+  grid-template-columns: 20px minmax(0, 1fr);
+  padding: 5px 6px;
+}
+
+.run-browser-row > input {
+  width: 15px;
+  height: 15px;
+}
+
+.run-browser-row > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 6px 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.compare-preview {
+  border-top: 1px solid #2a3034;
+  padding-top: 10px;
+}
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -925,6 +982,49 @@ button.primary:hover {
   background: #111416;
   border: 1px solid #2a3034;
   border-radius: 6px;
+}
+
+.graph-preview-controls {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 8px;
+  color: #c8d1d5;
+  font-size: 11px;
+}
+
+.graph-preview-controls label {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 42px;
+  gap: 7px;
+  align-items: center;
+}
+
+.graph-preview-controls input[type="number"] {
+  width: 76px;
+  min-height: 26px;
+  border: 1px solid #384148;
+  border-radius: 6px;
+  background: #111416;
+  color: #edf2f4;
+  padding: 0 7px;
+}
+
+.graph-preview-controls button {
+  min-height: 26px;
+  padding: 0 8px;
+}
+
+.edge-detail {
+  display: grid;
+  gap: 2px;
+  border: 1px solid #2a3034;
+  border-radius: 6px;
+  background: #111416;
+  padding: 6px 8px;
+}
+
+.edge-detail span {
+  color: #9aa6ad;
 }
 
 .preview-table-wrap {
@@ -988,6 +1088,11 @@ button.primary:hover {
   fill: #80c7f4;
   stroke: #edf2f4;
   stroke-width: 1;
+  cursor: pointer;
+}
+
+.graph-preview g.focused circle {
+  fill: #f7c948;
 }
 
 .graph-preview text {
@@ -1000,6 +1105,33 @@ button.primary:hover {
   stroke: #88949b;
   stroke-width: 1.2;
   opacity: 0.78;
+  cursor: pointer;
+}
+
+.preview-edge.selected {
+  stroke-width: 2.5;
+  opacity: 1;
+}
+
+.preview-edge.edge-tp,
+.preview-edge.edge-true_positive {
+  stroke: #48c78e;
+}
+
+.preview-edge.edge-fp,
+.preview-edge.edge-false_positive {
+  stroke: #ff6b6b;
+}
+
+.preview-edge.edge-fn,
+.preview-edge.edge-false_negative {
+  stroke: #f7c948;
+  stroke-dasharray: 4 3;
+}
+
+.preview-edge.edge-pred,
+.preview-edge.edge-predicted {
+  stroke: #8bd5ff;
 }
 
 .react-flow__edge-path {

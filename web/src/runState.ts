@@ -126,12 +126,15 @@ export function nodeStatusFromRunEvent(event: RunEvent): { nodeId: string; statu
   if (eventName === 'node_blocked') {
     return { nodeId, status: 'blocked' };
   }
+  if (eventName === 'node_cancelled') {
+    return { nodeId, status: 'cancelled' };
+  }
   return null;
 }
 
 export function runStatusFromRunEvent(current: RunStatus | 'idle', event: RunEvent): RunStatus | 'idle' {
   const eventName = normalizeEventName(event);
-  if (eventName === 'queued' || eventName === 'running' || eventName === 'completed' || eventName === 'failed') {
+  if (eventName === 'queued' || eventName === 'running' || eventName === 'completed' || eventName === 'failed' || eventName === 'cancelled') {
     return eventName;
   }
   if (eventName === 'run_queued') {
@@ -145,6 +148,9 @@ export function runStatusFromRunEvent(current: RunStatus | 'idle', event: RunEve
   }
   if (eventName === 'run_failed') {
     return 'failed';
+  }
+  if (eventName === 'run_cancelled') {
+    return 'cancelled';
   }
   return current;
 }
@@ -186,7 +192,7 @@ export function applyRunEventToEdges(edges: StudioEdge[], event: RunEvent): Stud
 
   if (
     nodeId &&
-    (eventName === 'node_failed' || eventName === 'node_skipped' || eventName === 'node_blocked')
+    (eventName === 'node_failed' || eventName === 'node_skipped' || eventName === 'node_blocked' || eventName === 'node_cancelled')
   ) {
     return edges.map((edge) => {
       if (edge.target === nodeId || edge.source === nodeId) {
@@ -197,7 +203,14 @@ export function applyRunEventToEdges(edges: StudioEdge[], event: RunEvent): Stud
     });
   }
 
-  if (eventName === 'completed' || eventName === 'failed' || eventName === 'run_completed' || eventName === 'run_failed') {
+  if (
+    eventName === 'completed' ||
+    eventName === 'failed' ||
+    eventName === 'cancelled' ||
+    eventName === 'run_completed' ||
+    eventName === 'run_failed' ||
+    eventName === 'run_cancelled'
+  ) {
     return resetRunEdges(edges);
   }
 

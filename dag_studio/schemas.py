@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-NodeStatus = Literal["idle", "queued", "blocked", "running", "success", "failed", "skipped"]
-RunStatus = Literal["queued", "running", "completed", "failed"]
+NodeStatus = Literal["idle", "queued", "blocked", "running", "success", "failed", "skipped", "cancelled"]
+RunStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
 EventLevel = Literal["debug", "info", "warn", "error", "fatal"]
 
 
@@ -62,6 +62,8 @@ class RunOptions(BaseModel):
     target_node_id: Optional[str] = None
     target_node_ids: List[str] = Field(default_factory=list)
     disabled_node_ids: List[str] = Field(default_factory=list)
+    timeout_sec: Optional[float] = Field(default=None, ge=0)
+    node_timeout_sec: Optional[float] = Field(default=None, ge=0)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -122,7 +124,7 @@ class ArtifactRecord(BaseModel):
     node_type: Optional[str] = None
     output_kind: Optional[str] = None
     name: str
-    kind: Literal["json", "npz"]
+    kind: Literal["json", "npz", "csv", "md", "html"]
     rel_path: str
     size: int = 0
     created_at: datetime

@@ -71,6 +71,7 @@ export const resources = {
         success: 'Success',
         failed: 'Failed',
         skipped: 'Skipped',
+        cancelled: 'Cancelled',
         completed: 'Completed',
       },
       contextMenu: {
@@ -127,6 +128,22 @@ export const resources = {
               graph: { label: 'Graph' },
             },
           },
+          data_import: {
+            label: 'Data Import',
+            description: 'Load CSV, NPY, or NPZ data uploaded into the local project.',
+            fields: {
+              import_id: { label: 'Import ID' },
+              x_key: { label: 'X Key' },
+              b_key: { label: 'B Key' },
+              w_key: { label: 'W Key' },
+              has_header: { label: 'CSV Header' },
+              standardize: { label: 'Standardize' },
+            },
+            ports: {
+              data: { label: 'Data' },
+              graph: { label: 'Graph' },
+            },
+          },
           algorithm: {
             label: 'Algorithm',
             description: 'Run an official library-backed causal discovery algorithm.',
@@ -163,6 +180,33 @@ export const resources = {
               graph_view: { label: 'Graph View' },
             },
           },
+          experiment_sweep: {
+            label: 'Experiment Sweep',
+            description: 'Run multiple official algorithms across parameter grids and summarize metrics.',
+            fields: {
+              algorithms: { label: 'Algorithms' },
+              param_grid: { label: 'Param Grid' },
+              seeds: { label: 'Seeds' },
+              metrics: { label: 'Metrics' },
+              threshold: { label: 'Threshold' },
+              timeout_sec: { label: 'Timeout Sec' },
+            },
+            ports: {
+              data: { label: 'Data' },
+              graph: { label: 'Graph' },
+              evaluation_summary: { label: 'Summary' },
+            },
+          },
+          graph_editor: {
+            label: 'Graph Editor',
+            description: 'Apply edge edits to a causal graph and validate the result is a DAG.',
+            fields: {
+              edits: { label: 'Edits' },
+            },
+            ports: {
+              graph: { label: 'Graph' },
+            },
+          },
           evaluation: {
             label: 'Structure Evaluation',
             description: 'Compare two causal graphs, or score one graph with data using BIC.',
@@ -189,6 +233,21 @@ export const resources = {
             ports: {
               evaluation: { label: 'Evaluations' },
               evaluation_summary: { label: 'Summary' },
+            },
+          },
+          report_export: {
+            label: 'Report Export',
+            description: 'Create Markdown and HTML report artifacts from upstream outputs.',
+            fields: {
+              title: { label: 'Title' },
+            },
+            ports: {
+              data: { label: 'Data' },
+              graph: { label: 'Graph' },
+              evaluation: { label: 'Evaluation' },
+              evaluation_summary: { label: 'Summary' },
+              graph_view: { label: 'Graph View' },
+              report: { label: 'Report' },
             },
           },
         },

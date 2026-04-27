@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, Optional
 
-from dag_studio.execution import WorkflowExecutionError, WorkflowExecutor
+from dag_studio.execution import WorkflowCancelledError, WorkflowExecutionError, WorkflowExecutor
 from dag_studio.schemas import RunEvent, RunManifest, RunOptions, RunStartResponse, WorkflowDefinition
 from dag_studio.storage import LocalStudioStorage, utc_now
 
@@ -19,6 +19,7 @@ class JobManager:
         self.storage = storage or LocalStudioStorage()
         self.executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="dagboard")
         self._runs: Dict[str, RunManifest] = {}
+        self._cancelled: set[str] = set()
         self._lock = threading.Lock()
 
     def start_run(self, workflow: WorkflowDefinition, options: Optional[RunOptions] = None) -> RunStartResponse:
@@ -108,6 +109,9 @@ class JobManager:
                 emit=lambda event, payload: self._emit(run_id, event, payload),
                 target_node_id=options.target_node_id,
                 disabled_node_ids=options.disabled_node_ids,
+                cancel_checker=lambda: self.is_cancelled(run_id),
+                timeout_sec=options.timeout_sec,
+                node_timeout_sec=options.node_timeout_sec,
             )
             records = executor.execute(workflow)
             with self._lock:
@@ -116,6 +120,14 @@ class JobManager:
                 manifest.status = "completed"
                 manifest.finished_at = utc_now()
             self._emit(run_id, "completed", {"node_counts": _node_counts(records)})
+        except WorkflowCancelledError as exc:
+            with self._lock:
+                manifest = self._runs[run_id]
+                manifest.node_states = exc.records
+                manifest.status = "cancelled"
+                manifest.error = str(exc)
+                manifest.finished_at = utc_now()
+            self._emit(run_id, "cancelled", {"error": str(exc), "node_counts": _node_counts(exc.records)})
         except WorkflowExecutionError as exc:
             with self._lock:
                 manifest = self._runs[run_id]
@@ -135,6 +147,24 @@ class JobManager:
             with self._lock:
                 manifest = self._runs[run_id]
             self.storage.save_run_manifest(manifest)
+
+    def cancel_run(self, run_id: str) -> RunManifest:
+        with self._lock:
+            manifest = self._runs.get(run_id)
+            active = manifest is not None
+            if manifest is None:
+                manifest = self.storage.load_run_manifest(run_id)
+            if manifest.status in {"completed", "failed", "cancelled"}:
+                return manifest
+            if not active:
+                return manifest
+            self._cancelled.add(run_id)
+        self._emit(run_id, "cancel_requested", {"run_id": run_id})
+        return self.get_run(run_id)
+
+    def is_cancelled(self, run_id: str) -> bool:
+        with self._lock:
+            return run_id in self._cancelled
 
     def _set_status(self, run_id: str, status: str) -> None:
         with self._lock:
@@ -179,13 +209,13 @@ def _node_counts(records: dict) -> dict[str, int]:
 def _event_metadata(event: str, payload: dict) -> tuple[str, str, str, str]:
     node_id = payload.get("node_id")
     event_type = event.replace("_", ".")
-    if event in {"queued", "running", "completed", "failed"}:
+    if event in {"queued", "running", "completed", "failed", "cancelled"}:
         event_type = f"run.{event}"
     category = "lifecycle"
     level = "info"
     if event in {"node_failed", "failed"}:
         level = "error"
-    elif event in {"node_warning", "node_blocked"}:
+    elif event in {"node_warning", "node_blocked", "cancel_requested", "node_cancelled"}:
         level = "warn"
     if event in {"node_skipped", "node_blocked"}:
         category = "validation"
@@ -195,12 +225,15 @@ def _event_metadata(event: str, payload: dict) -> tuple[str, str, str, str]:
         "queued": "Run queued.",
         "running": "Run started.",
         "completed": "Run completed.",
+        "cancel_requested": "Run cancellation requested.",
+        "cancelled": "Run cancelled.",
         "failed": f"Run failed: {payload.get('error', 'unknown error')}",
         "node_started": f"Node {node_id} started.",
         "node_completed": f"Node {node_id} completed.",
         "node_failed": f"Node {node_id} failed: {payload.get('error', 'unknown error')}",
         "node_warning": f"Node {node_id} warning: {payload.get('warning', '')}",
         "node_skipped": f"Node {node_id} skipped: {payload.get('reason', '')}",
+        "node_cancelled": f"Node {node_id} cancelled.",
         "node_blocked": f"Node {node_id} blocked by upstream inputs.",
     }
     return level, category, event_type, messages.get(event, event_type)

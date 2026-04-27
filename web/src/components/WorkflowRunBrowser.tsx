@@ -1,4 +1,4 @@
-import { Clock3, FileText, FolderOpen, RefreshCw } from 'lucide-react';
+import { Clock3, FileText, FolderOpen, GitCompare, RefreshCw } from 'lucide-react';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -27,6 +27,7 @@ export type WorkflowRunBrowserProps = {
   runs?: readonly WorkflowRunBrowserRun[] | null;
   selectedWorkflowId?: string | null;
   selectedRunId?: string | null;
+  selectedCompareRunIds?: readonly string[];
   workflowFilter?: string;
   runFilter?: string;
   isLoadingWorkflows?: boolean;
@@ -38,6 +39,8 @@ export type WorkflowRunBrowserProps = {
   onRefreshRuns?: () => void;
   onLoadWorkflow?: (workflowId: string, workflow: WorkflowRunBrowserWorkflow) => void;
   onOpenRun?: (runId: string, run: WorkflowRunBrowserRun) => void;
+  onToggleRunCompare?: (runId: string) => void;
+  onCompareRuns?: () => void;
 };
 
 function stringValue(value: unknown): string {
@@ -148,6 +151,7 @@ export function WorkflowRunBrowser({
   runs = [],
   selectedWorkflowId = null,
   selectedRunId = null,
+  selectedCompareRunIds = [],
   workflowFilter = '',
   runFilter = '',
   isLoadingWorkflows = false,
@@ -159,6 +163,8 @@ export function WorkflowRunBrowser({
   onRefreshRuns,
   onLoadWorkflow,
   onOpenRun,
+  onToggleRunCompare,
+  onCompareRuns,
 }: WorkflowRunBrowserProps) {
   const visibleWorkflows = (workflows ?? []).filter((workflow) => matchesFilter(workflow, workflowFilter));
   const visibleRuns = (runs ?? []).filter((run) => matchesFilter(run, runFilter));
@@ -209,6 +215,17 @@ export function WorkflowRunBrowser({
           <FolderOpen size={15} />
           <span>Runs</span>
           <strong>{isLoadingRuns ? 'loading' : visibleRuns.length}</strong>
+          {onCompareRuns ? (
+            <button
+              type="button"
+              onClick={onCompareRuns}
+              disabled={disabled || selectedCompareRunIds.length < 2}
+              title="Compare selected runs"
+              style={{ minHeight: 26, padding: '0 7px' }}
+            >
+              <GitCompare size={13} />
+            </button>
+          ) : null}
           {onRefreshRuns ? (
             <button type="button" onClick={onRefreshRuns} disabled={disabled || isLoadingRuns} title="Refresh runs" style={{ minHeight: 26, padding: '0 7px' }}>
               <RefreshCw size={13} className={isLoadingRuns ? 'spin' : undefined} />
@@ -221,27 +238,40 @@ export function WorkflowRunBrowser({
             const id = runId(run);
             const status = stringValue(run.status) || 'unknown';
             const selected = Boolean(id && id === selectedRunId);
+            const compareSelected = Boolean(id && selectedCompareRunIds.includes(id));
             return (
-              <button
+              <div
                 key={id || runName(run)}
-                type="button"
-                className="event"
-                disabled={disabled || !id || !onOpenRun}
-                onClick={() => id && onOpenRun?.(id, run)}
-                title={id || runName(run)}
+                className="event run-browser-row"
                 style={{
                   width: '100%',
                   borderColor: selected ? '#80c7f4' : undefined,
                   background: selected ? '#25313a' : undefined,
                 }}
               >
-                <span>{runName(run)}</span>
-                <code style={{ color: statusTone(status) }}>
-                  <Clock3 size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
-                  {status}
-                </code>
-                <code style={{ gridColumn: '1 / -1' }}>{compactDate(run.finished_at ?? run.started_at ?? run.updated_at ?? run.created_at) || id}</code>
-              </button>
+                {onToggleRunCompare ? (
+                  <input
+                    type="checkbox"
+                    checked={compareSelected}
+                    disabled={disabled || !id}
+                    onChange={() => id && onToggleRunCompare(id)}
+                    title="Select for compare"
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  disabled={disabled || !id || !onOpenRun}
+                  onClick={() => id && onOpenRun?.(id, run)}
+                  title={id || runName(run)}
+                >
+                  <span>{runName(run)}</span>
+                  <code style={{ color: statusTone(status) }}>
+                    <Clock3 size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                    {status}
+                  </code>
+                  <code style={{ gridColumn: '1 / -1' }}>{compactDate(run.finished_at ?? run.started_at ?? run.updated_at ?? run.created_at) || id}</code>
+                </button>
+              </div>
             );
           })}
           {!visibleRuns.length ? <EmptyRow>{isLoadingRuns ? 'Loading runs.' : 'No matching runs.'}</EmptyRow> : null}

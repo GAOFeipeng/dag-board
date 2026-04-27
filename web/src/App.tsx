@@ -70,7 +70,16 @@ import {
   type ConnectionPreflightResult,
 } from './runState';
 import { useStudioStore } from './store';
-import type { ArtifactRecord, NodeTypeDefinition, RunEvent, RunOptions, StudioEdge, StudioNode as StudioNodeType, WorkflowPayload } from './types';
+import type {
+  ArtifactRecord,
+  NodeTypeDefinition,
+  RunComparePayload,
+  RunEvent,
+  RunOptions,
+  StudioEdge,
+  StudioNode as StudioNodeType,
+  WorkflowPayload,
+} from './types';
 
 const PREVIEW_STORAGE_KEY = 'dagboard.showNodePreviews';
 const DRAFT_STORAGE_KEY = 'dagboard.workflowDraft';
@@ -156,6 +165,8 @@ function StudioCanvas() {
   const [runFilter, setRunFilter] = useState('');
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [selectedCompareRunIds, setSelectedCompareRunIds] = useState<string[]>([]);
+  const [compareResult, setCompareResult] = useState<RunComparePayload | null>(null);
   const nodeTypesQuery = useQuery({ queryKey: ['node-types'], queryFn: api.nodeTypes });
   const algorithmsQuery = useQuery({ queryKey: ['algorithms'], queryFn: api.algorithms });
   const workflowsQuery = useQuery({ queryKey: ['workflows'], queryFn: api.workflows });
@@ -359,7 +370,14 @@ function StudioCanvas() {
         setNodes((current) => applyRunEventToNodes(current as StudioNodeType[], event));
         setEdges((current) => applyRunEventToEdges(current as StudioEdge[], event));
         const eventName = String(event.type || event.event).replaceAll('.', '_');
-        if (eventName === 'completed' || eventName === 'failed' || eventName === 'run_completed' || eventName === 'run_failed') {
+        if (
+          eventName === 'completed' ||
+          eventName === 'failed' ||
+          eventName === 'cancelled' ||
+          eventName === 'run_completed' ||
+          eventName === 'run_failed' ||
+          eventName === 'run_cancelled'
+        ) {
           terminal = true;
           if (pollTimer !== undefined) {
             window.clearInterval(pollTimer);
@@ -541,6 +559,69 @@ function StudioCanvas() {
     },
     [commitCanvas, edges, nodes],
   );
+
+  const uploadImportForNode = useCallback(
+    async (nodeId: string, file: File) => {
+      try {
+        const imported = await api.uploadImport(file);
+        commitCanvas(
+          {
+            nodes: (nodes as StudioNodeType[]).map((node) =>
+              node.id === nodeId
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      params: {
+                        ...(node.data.params ?? {}),
+                        import_id: imported.import_id,
+                        has_header: imported.suffix === '.csv' ? node.data.params?.has_header ?? true : node.data.params?.has_header,
+                      },
+                    },
+                  }
+                : node,
+            ),
+            edges: edges as StudioEdge[],
+          },
+          { selectNodeId: nodeId },
+        );
+        setValidationError(`Imported ${imported.filename} as ${imported.import_id}.`);
+      } catch (error) {
+        setValidationError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [commitCanvas, edges, nodes],
+  );
+
+  const cancelActiveRun = useCallback(async () => {
+    if (!runId) return;
+    const loaded = await api.cancelRun(runId);
+    setManifest(loaded);
+    void runsQuery.refetch();
+  }, [runId, runsQuery, setManifest]);
+
+  const exportRunReport = useCallback(async () => {
+    if (!runId) return;
+    try {
+      await api.reportFromRun(runId);
+      await artifactsQuery.refetch();
+      setValidationError('Report artifacts were generated for the current run.');
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : String(error));
+    }
+  }, [artifactsQuery, runId]);
+
+  const toggleCompareRun = useCallback((nextRunId: string) => {
+    setSelectedCompareRunIds((current) =>
+      current.includes(nextRunId) ? current.filter((item) => item !== nextRunId) : [...current, nextRunId],
+    );
+  }, []);
+
+  const compareSelectedRuns = useCallback(async () => {
+    if (selectedCompareRunIds.length < 2) return;
+    const payload = await api.runCompare(selectedCompareRunIds);
+    setCompareResult(payload);
+  }, [selectedCompareRunIds]);
 
   const loadWorkflow = useCallback(
     async (workflowId: string, workflow?: WorkflowPayload) => {
@@ -850,6 +931,7 @@ function StudioCanvas() {
                 runs={runsQuery.data ?? []}
                 selectedWorkflowId={selectedWorkflowId}
                 selectedRunId={selectedRunId}
+                selectedCompareRunIds={selectedCompareRunIds}
                 workflowFilter={workflowFilter}
                 runFilter={runFilter}
                 isLoadingWorkflows={workflowsQuery.isLoading}
@@ -860,7 +942,12 @@ function StudioCanvas() {
                 onRefreshRuns={() => void runsQuery.refetch()}
                 onLoadWorkflow={(workflowId, workflow) => void loadWorkflow(workflowId, workflow as WorkflowPayload)}
                 onOpenRun={(nextRunId) => void openRun(nextRunId)}
+                onToggleRunCompare={toggleCompareRun}
+                onCompareRuns={() => void compareSelectedRuns()}
               />
+              {compareResult ? (
+                <RunComparePreview payload={compareResult} csvUrl={api.runCompareCsvUrl(compareResult.run_ids)} />
+              ) : null}
             </div>
           ) : null}
         </header>
@@ -1001,6 +1088,8 @@ function StudioCanvas() {
             manifest={manifest}
             artifacts={artifactsQuery.data ?? []}
             onOpenArtifact={(artifact) => void openArtifact(artifact)}
+            onCancelRun={() => void cancelActiveRun()}
+            onExportReport={() => void exportRunReport()}
           />
           <GraphPreview graphView={graphView} selectedNodeId={selectedNodeId} selectedOutput={selectedNodeOutput} />
         </div>
@@ -1017,9 +1106,57 @@ function StudioCanvas() {
             edges: edges as StudioEdge[],
           }, { selectNodeId: nodeId });
         }}
+        onUploadImport={uploadImportForNode}
       />
     </div>
   );
+}
+
+function RunComparePreview({ payload, csvUrl }: { payload: RunComparePayload; csvUrl: string }) {
+  const rows = payload.rows.slice(0, 8);
+  const columns = ['run_id', 'node_id', 'algorithm', 'seed', 'f1', 'shd', 'precision', 'recall', 'runtime'].filter((column) =>
+    payload.rows.some((row) => row[column] !== undefined),
+  );
+  return (
+    <div className="compare-preview">
+      <div className="panel-heading small">
+        <span>Run Compare</span>
+        <strong>{payload.row_count}</strong>
+        <a href={csvUrl} target="_blank" rel="noreferrer">CSV</a>
+      </div>
+      <div className="preview-table-wrap">
+        <table className="preview-table">
+          <thead>
+            <tr>
+              {columns.map((column) => (
+                <th key={column}>{column}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={`${row.run_id ?? 'run'}-${row.node_id ?? 'node'}-${index}`}>
+                {columns.map((column) => (
+                  <td key={column}>{formatCell(row[column])}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function formatCell(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) return value.toFixed(4);
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '-';
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 export default function App() {

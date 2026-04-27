@@ -1,12 +1,14 @@
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 type JsonRecord = Record<string, unknown>;
 
 type GraphView = {
   nodes?: Array<{ id: string; label: string; index: number }>;
-  edges?: Array<{ source: string; target: string; status?: string; weight?: number }>;
+  edges?: Array<{ source: string; target: string; status?: string; weight?: number; algorithm?: string }>;
   render_meta?: { edge_count?: number; source?: string; compare_mode?: string };
 };
+type GraphEdge = NonNullable<GraphView['edges']>[number];
 
 type DataPreview = {
   columns?: string[];
@@ -25,6 +27,10 @@ export function GraphPreview({
   selectedOutput?: Record<string, unknown> | null;
 }) {
   const { t } = useTranslation();
+  const [threshold, setThreshold] = useState(0);
+  const [topK, setTopK] = useState(80);
+  const [focusNode, setFocusNode] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const output = selectedOutput ?? null;
   const dataOutput = isRecord(output?.data) ? output.data : null;
   const dataPreview = isRecord(dataOutput?.data_preview) ? (dataOutput.data_preview as DataPreview) : null;
@@ -32,7 +38,13 @@ export function GraphPreview({
   const evaluation = isRecord(output?.evaluation) ? output.evaluation : null;
   const view = graphViewFromOutput(output) ?? ((graphView ?? {}) as GraphView);
   const nodes = view.nodes ?? [];
-  const edges = view.edges ?? [];
+  const edges = useMemo(() => {
+    const ranked = [...(view.edges ?? [])]
+      .filter((edge) => Math.abs(Number(edge.weight ?? 1)) >= threshold)
+      .filter((edge) => !focusNode || edge.source === focusNode || edge.target === focusNode)
+      .sort((left, right) => Math.abs(Number(right.weight ?? 0)) - Math.abs(Number(left.weight ?? 0)));
+    return ranked.slice(0, topK);
+  }, [focusNode, threshold, topK, view.edges]);
   const headingDetail = selectedNodeId ?? view.render_meta?.source ?? t('panels.none');
 
   return (
@@ -44,7 +56,20 @@ export function GraphPreview({
       {dataPreview ? <DataPreviewTable preview={dataPreview} /> : null}
       {!dataPreview && summary ? <SummaryPreview summary={summary} /> : null}
       {!dataPreview && !summary && evaluation ? <MetricsPreview evaluation={evaluation} /> : null}
-      {!dataPreview && !summary && !evaluation && nodes.length ? <GraphSvg view={view} /> : null}
+      {!dataPreview && !summary && !evaluation && nodes.length ? (
+        <>
+          <GraphControls
+            threshold={threshold}
+            topK={topK}
+            focusNode={focusNode}
+            selectedEdge={selectedEdge}
+            onThresholdChange={setThreshold}
+            onTopKChange={setTopK}
+            onClearFocus={() => setFocusNode(null)}
+          />
+          <GraphSvg view={{ ...view, edges }} focusNode={focusNode} selectedEdge={selectedEdge} onSelectEdge={setSelectedEdge} onFocusNode={setFocusNode} />
+        </>
+      ) : null}
       {!dataPreview && !summary && !evaluation && !nodes.length ? (
         <div className="empty-state compact">{selectedNodeId ? t('panels.noPreview') : t('panels.selectOutputNode')}</div>
       ) : null}
@@ -52,7 +77,62 @@ export function GraphPreview({
   );
 }
 
-function GraphSvg({ view }: { view: GraphView }) {
+function GraphControls({
+  threshold,
+  topK,
+  focusNode,
+  selectedEdge,
+  onThresholdChange,
+  onTopKChange,
+  onClearFocus,
+}: {
+  threshold: number;
+  topK: number;
+  focusNode: string | null;
+  selectedEdge: GraphEdge | null;
+  onThresholdChange: (value: number) => void;
+  onTopKChange: (value: number) => void;
+  onClearFocus: () => void;
+}) {
+  return (
+    <div className="graph-preview-controls">
+      <label>
+        <span>Threshold</span>
+        <input type="range" min={0} max={2} step={0.05} value={threshold} onChange={(event) => onThresholdChange(Number(event.target.value))} />
+        <code>{threshold.toFixed(2)}</code>
+      </label>
+      <label>
+        <span>Top-K</span>
+        <input type="number" min={1} max={500} value={topK} onChange={(event) => onTopKChange(Math.max(1, Number(event.target.value) || 1))} />
+      </label>
+      {focusNode ? (
+        <button type="button" onClick={onClearFocus}>
+          Focus: {focusNode}
+        </button>
+      ) : null}
+      {selectedEdge ? (
+        <div className="edge-detail">
+          <strong>{selectedEdge.source}{' -> '}{selectedEdge.target}</strong>
+          <span>{selectedEdge.status ?? 'edge'} · {formatNumber(selectedEdge.weight)}{selectedEdge.algorithm ? ` · ${selectedEdge.algorithm}` : ''}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function GraphSvg({
+  view,
+  focusNode,
+  selectedEdge,
+  onSelectEdge,
+  onFocusNode,
+}: {
+  view: GraphView;
+  focusNode: string | null;
+  selectedEdge: GraphEdge | null;
+  onSelectEdge: (edge: GraphEdge) => void;
+  onFocusNode: (nodeId: string) => void;
+}) {
   const nodes = view.nodes ?? [];
   const edges = view.edges ?? [];
   const width = 340;
@@ -71,6 +151,7 @@ function GraphSvg({ view }: { view: GraphView }) {
         const source = positions.get(edge.source);
         const target = positions.get(edge.target);
         if (!source || !target) return null;
+        const selected = selectedEdge?.source === edge.source && selectedEdge?.target === edge.target && selectedEdge?.status === edge.status;
         return (
           <line
             key={`${edge.source}-${edge.target}-${index}`}
@@ -78,14 +159,15 @@ function GraphSvg({ view }: { view: GraphView }) {
             y1={source.y}
             x2={target.x}
             y2={target.y}
-            className={`preview-edge edge-${edge.status ?? 'plain'}`}
+            className={`preview-edge edge-${edge.status ?? 'plain'} ${selected ? 'selected' : ''}`}
+            onClick={() => onSelectEdge(edge)}
           />
         );
       })}
       {nodes.map((node) => {
         const position = positions.get(node.id)!;
         return (
-          <g key={node.id}>
+          <g key={node.id} className={focusNode === node.id ? 'focused' : undefined} onClick={() => onFocusNode(node.id)}>
             <circle cx={position.x} cy={position.y} r="8" />
             <text x={position.x} y={position.y - 12}>
               {node.label}

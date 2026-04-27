@@ -72,7 +72,9 @@ export const useStudioStore = create<StudioStore>((set) => ({
               ? 'completed'
               : eventName === 'failed' || eventName === 'run_failed'
                 ? 'failed'
-                : state.runStatus;
+                : eventName === 'cancelled' || eventName === 'run_cancelled'
+                  ? 'cancelled'
+                  : state.runStatus;
       return { events: [...state.events, event], nodeOutputs: nextOutputs, graphView, runStatus };
     }),
   setManifest: (manifest) => {

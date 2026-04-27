@@ -1,4 +1,5 @@
-import { SlidersHorizontal } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, SlidersHorizontal, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AlgorithmRow, NodeField, NodeTypeDefinition, StudioNode } from '../types';
 
@@ -89,6 +90,7 @@ export function InspectorPanel({
   algorithms,
   onUpdate,
   onRename,
+  onUploadImport,
 }: {
   selectedNode: StudioNode | null;
   selectionSummary?: { nodeCount: number; edgeCount: number };
@@ -96,10 +98,13 @@ export function InspectorPanel({
   algorithms: AlgorithmRow[];
   onUpdate: (nodeId: string, params: Record<string, unknown>) => void;
   onRename?: (nodeId: string, label: string) => void;
+  onUploadImport?: (nodeId: string, file: File) => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const [uploadingNodeId, setUploadingNodeId] = useState<string | null>(null);
   const definition = selectedNode ? nodeTypes.find((item) => item.id === selectedNode.data.nodeType) : null;
   const params = selectedNode?.data.params ?? {};
+  const editRows = Array.isArray(params.edits) ? params.edits : [];
 
   return (
     <aside className="right-panel">
@@ -124,6 +129,28 @@ export function InspectorPanel({
             />
           </label>
           <p>{definition.description}</p>
+          {selectedNode.data.nodeType === 'data_import' ? (
+            <label className="field-row">
+              <span>Upload</span>
+              <span className="file-upload-row">
+                <Upload size={14} />
+                <input
+                  type="file"
+                  accept=".csv,.npy,.npz"
+                  disabled={!onUploadImport || uploadingNodeId === selectedNode.id}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file || !onUploadImport) return;
+                    setUploadingNodeId(selectedNode.id);
+                    void onUploadImport(selectedNode.id, file).finally(() => {
+                      setUploadingNodeId(null);
+                      event.currentTarget.value = '';
+                    });
+                  }}
+                />
+              </span>
+            </label>
+          ) : null}
           {definition.fields.map((field) => (
             <label key={field.name} className="field-row">
               <span>{field.label}</span>
@@ -135,6 +162,24 @@ export function InspectorPanel({
               />
             </label>
           ))}
+          {selectedNode.data.nodeType === 'graph_editor' ? (
+            <div className="inspector-actions">
+              <button
+                type="button"
+                onClick={() => onUpdate(selectedNode.id, { ...params, edits: [...editRows, { op: 'set_edge', source: 'X1', target: 'X2', weight: 1 }] })}
+              >
+                <Plus size={13} />
+                Set edge
+              </button>
+              <button
+                type="button"
+                onClick={() => onUpdate(selectedNode.id, { ...params, edits: [...editRows, { op: 'remove_edge', source: 'X1', target: 'X2' }] })}
+              >
+                <Plus size={13} />
+                Remove edge
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
     </aside>

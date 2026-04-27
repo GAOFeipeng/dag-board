@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import inspect
 import time
+import traceback
 from dataclasses import dataclass
 from importlib.util import find_spec
+from multiprocessing import get_context
 from typing import Any
 
 import numpy as np
@@ -118,6 +120,38 @@ def run_official_baseline(name: str, X: np.ndarray, params: dict[str, Any]) -> B
     if name == "DAGMA":
         return _run_dagma(X, params)
     return _run_castle(name, X, params)
+
+
+def run_official_baseline_with_timeout(
+    name: str,
+    X: np.ndarray,
+    params: dict[str, Any],
+    timeout_sec: float | None = None,
+) -> BaselineResult:
+    if timeout_sec is None or timeout_sec <= 0:
+        return run_official_baseline(name, X, params)
+    context = get_context("spawn")
+    queue = context.Queue()
+    process = context.Process(target=_baseline_process_worker, args=(queue, name, np.asarray(X, dtype=float), params))
+    process.start()
+    process.join(float(timeout_sec))
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=2)
+        raise TimeoutError(f"Algorithm {name} exceeded timeout_sec={timeout_sec}.")
+    if queue.empty():
+        raise RuntimeError(f"Algorithm {name} subprocess exited without a result.")
+    status, payload = queue.get()
+    if status == "ok":
+        return payload
+    raise RuntimeError(str(payload.get("error", "Algorithm subprocess failed.")))
+
+
+def _baseline_process_worker(queue: Any, name: str, X: np.ndarray, params: dict[str, Any]) -> None:
+    try:
+        queue.put(("ok", run_official_baseline(name, X, params)))
+    except Exception as exc:
+        queue.put(("error", {"error": str(exc), "detail": traceback.format_exc(limit=8)}))
 
 
 def _run_castle(name: str, X: np.ndarray, params: dict[str, Any]) -> BaselineResult:

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Files, Filter, Loader2, ScrollText, Search } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, FileText, Files, Filter, Loader2, ScrollText, Search, StopCircle } from 'lucide-react';
 import type { ArtifactRecord, RunEvent } from '../types';
 
 type JsonRecord = Record<string, unknown>;
@@ -46,6 +46,8 @@ export type RunPanelProps = {
   manifest?: ExtendedRunManifest | null;
   artifacts?: ArtifactRecord[];
   onOpenArtifact?: (artifact: ArtifactItem) => void;
+  onCancelRun?: () => void;
+  onExportReport?: () => void;
 };
 
 type OutputEntry = {
@@ -219,6 +221,7 @@ function matchesFilter(text: string, filter: string): boolean {
 function activeIcon(runStatus: string) {
   if (runStatus === 'running' || runStatus === 'queued') return <Loader2 size={15} className="spin" />;
   if (runStatus === 'failed') return <AlertTriangle size={15} />;
+  if (runStatus === 'cancelled') return <StopCircle size={15} />;
   return <Activity size={15} />;
 }
 
@@ -388,6 +391,8 @@ export function RunPanel({
   manifest,
   artifacts: apiArtifacts = [],
   onOpenArtifact,
+  onCancelRun,
+  onExportReport,
 }: RunPanelProps) {
   const [activeTab, setActiveTab] = useState<RunPanelTab>('logs');
   const [logFilter, setLogFilter] = useState('');
@@ -433,6 +438,16 @@ export function RunPanel({
           {tabs.map((tab) => (
             <TabButton key={tab.id} active={activeTab === tab.id} label={tab.label} onClick={() => setActiveTab(tab.id)} />
           ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button type="button" disabled={!onCancelRun || !['queued', 'running'].includes(runStatus)} onClick={onCancelRun} style={{ minHeight: 30, padding: '0 9px' }}>
+            <StopCircle size={13} />
+            Cancel
+          </button>
+          <button type="button" disabled={!onExportReport || runStatus === 'idle'} onClick={onExportReport} style={{ minHeight: 30, padding: '0 9px' }}>
+            <FileText size={13} />
+            Report
+          </button>
         </div>
         <FilterBox label={`${tabs.find((tab) => tab.id === activeTab)?.label ?? 'Items'} filter`} value={activeFilter} onChange={activeFilterSetter} />
         <FocusToggle selectedNodeId={selectedNodeId} checked={focusSelected} onChange={setFocusSelected} />

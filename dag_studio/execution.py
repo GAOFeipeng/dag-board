@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import math
+import csv
+import html
+import itertools
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -12,13 +15,13 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import numpy as np
 
-from dag_studio.baselines import get_algorithm_metadata, run_official_baseline
+from dag_studio.baselines import get_algorithm_metadata, run_official_baseline, run_official_baseline_with_timeout
 from dag_studio.graph_utils import binary_adjacency, edge_list_from_matrix, graph_nodes, overlay_edges
 from dag_studio.metrics import MetricsCalculator, sid_score
 from dag_studio.node_types import NODE_TYPES
 from dag_studio.schemas import NodeRunRecord, WorkflowDefinition, WorkflowEdge, WorkflowNode
 from dag_studio.simulation import is_dag, set_random_seed, simulate_dag, simulate_parameter, simulate_sem
-from dag_studio.storage import LocalStudioStorage, matrix_summary, utc_now
+from dag_studio.storage import LocalStudioStorage, jsonable, matrix_summary, utc_now
 
 
 class WorkflowValidationError(ValueError):
@@ -27,6 +30,14 @@ class WorkflowValidationError(ValueError):
 
 class WorkflowExecutionError(WorkflowValidationError):
     """Raised after a run records node-level failures."""
+
+    def __init__(self, message: str, records: Dict[str, NodeRunRecord]):
+        super().__init__(message)
+        self.records = records
+
+
+class WorkflowCancelledError(WorkflowValidationError):
+    """Raised when a workflow run is cancelled."""
 
     def __init__(self, message: str, records: Dict[str, NodeRunRecord]):
         super().__init__(message)
@@ -70,6 +81,19 @@ def _has_value(value: Any) -> bool:
 def _float_param(params: dict[str, Any], key: str, default: float) -> float:
     value = params.get(key)
     return float(value) if _has_value(value) else default
+
+
+def _optional_float_param(params: dict[str, Any], key: str, default: Optional[float] = None) -> Optional[float]:
+    value = params.get(key)
+    return float(value) if _has_value(value) else default
+
+
+def _list_param(value: Any, default: Optional[list[Any]] = None) -> list[Any]:
+    if value is None or value == "":
+        return list(default or [])
+    if isinstance(value, list):
+        return value
+    return [value]
 
 
 def _incoming_edges(workflow: WorkflowDefinition) -> dict[str, list[WorkflowEdge]]:
@@ -234,6 +258,117 @@ def _resolve_sort_order(metric: str, sort_order: str) -> str:
     return _metric_sort_direction(metric) if sort_order == "auto" else sort_order
 
 
+def _expand_param_grid(grid: Any) -> list[dict[str, Any]]:
+    if not isinstance(grid, dict) or not grid:
+        return [{}]
+    normalized = {key: (value if isinstance(value, list) else [value]) for key, value in grid.items() if key not in {"algorithms", "seeds"}}
+    if not normalized:
+        return [{}]
+    keys = list(normalized)
+    return [dict(zip(keys, values)) for values in itertools.product(*(normalized[key] for key in keys))]
+
+
+def _rank_rows(rows: list[dict[str, Any]], metric: str, direction: str) -> list[dict[str, Any]]:
+    def key(row: dict[str, Any]) -> float:
+        value = _finite_float(row.get(metric))
+        if value is None:
+            return math.inf if direction == "asc" else -math.inf
+        return value
+
+    ranked = sorted(rows, key=key, reverse=direction == "desc")
+    for index, row in enumerate(ranked, start=1):
+        row["rank"] = index
+    return ranked
+
+
+def _best_by_metric(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    metrics = sorted({key for row in rows for key, value in row.items() if _finite_float(value) is not None})
+    best: dict[str, Any] = {}
+    for metric in metrics:
+        direction = _metric_sort_direction(metric)
+        ranked = _rank_rows([dict(row) for row in rows], metric, direction)
+        if ranked:
+            best[metric] = ranked[0]
+    return best
+
+
+def _rows_to_csv(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return ""
+    columns = sorted({key for row in rows for key in row.keys() if key != "params"})
+    if "params" in {key for row in rows for key in row.keys()}:
+        columns.append("params")
+    output: list[str] = []
+    buffer = _StringListWriter(output)
+    writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: jsonable(value) if not isinstance(value, (dict, list)) else jsonable(value) for key, value in row.items()})
+    return "".join(output)
+
+
+def _compact_json(value: Any) -> str:
+    import json
+
+    return json.dumps(jsonable(value), ensure_ascii=False, indent=2)[:12000]
+
+
+def _markdown_kv(values: dict[str, Any]) -> str:
+    rows = [{"metric": key, "value": value} for key, value in values.items()]
+    return _markdown_table(rows)
+
+
+def _markdown_table(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "_No rows._"
+    columns = [key for key in rows[0].keys() if key != "params"][:12]
+    lines = [
+        "| " + " | ".join(columns) + " |",
+        "| " + " | ".join("---" for _ in columns) + " |",
+    ]
+    for row in rows:
+        lines.append("| " + " | ".join(str(row.get(column, ""))[:120].replace("\n", " ") for column in columns) + " |")
+    return "\n".join(lines)
+
+
+def _markdown_to_simple_html(markdown: str) -> str:
+    body = []
+    in_code = False
+    for line in markdown.splitlines():
+        if line.startswith("```"):
+            body.append("</pre>" if in_code else "<pre>")
+            in_code = not in_code
+        elif in_code:
+            body.append(html.escape(line))
+        elif line.startswith("# "):
+            body.append(f"<h1>{html.escape(line[2:])}</h1>")
+        elif line.startswith("## "):
+            body.append(f"<h2>{html.escape(line[3:])}</h2>")
+        elif line.startswith("|"):
+            body.append(f"<pre>{html.escape(line)}</pre>")
+        elif line.strip():
+            body.append(f"<p>{html.escape(line)}</p>")
+    return "<!doctype html><html><head><meta charset=\"utf-8\"><title>DAGBoard Report</title></head><body>" + "\n".join(body) + "</body></html>"
+
+
+class _StringListWriter:
+    def __init__(self, output: list[str]) -> None:
+        self.output = output
+
+    def write(self, value: str) -> int:
+        self.output.append(value)
+        return len(value)
+
+
+def _node_index(value: Any, labels: dict[str, int]) -> Optional[int]:
+    if isinstance(value, (int, np.integer)):
+        index = int(value)
+        return index if 0 <= index < len(labels) else None
+    if isinstance(value, str) and value in labels:
+        return labels[value]
+    return None
+
+
 def _matrix_table_preview(matrix: np.ndarray, columns: list[str], rows: int = 12, decimals: int = 4) -> dict[str, Any]:
     arr = np.asarray(matrix, dtype=float)
     row_count = min(max(rows, 0), int(arr.shape[0])) if arr.ndim >= 2 else 0
@@ -282,14 +417,22 @@ class WorkflowExecutor:
         emit: Optional[Callable[[str, Dict[str, Any]], None]] = None,
         target_node_id: Optional[str] = None,
         disabled_node_ids: Optional[Iterable[str]] = None,
+        cancel_checker: Optional[Callable[[], bool]] = None,
+        timeout_sec: Optional[float] = None,
+        node_timeout_sec: Optional[float] = None,
     ):
         self.storage = storage
         self.run_dir = Path(run_dir)
         self.emit = emit or (lambda _event, _payload: None)
         self.target_node_id = target_node_id
         self.disabled_node_ids = set(disabled_node_ids or [])
+        self.cancel_checker = cancel_checker or (lambda: False)
+        self.timeout_sec = timeout_sec
+        self.node_timeout_sec = node_timeout_sec
+        self._started_perf: Optional[float] = None
 
     def execute(self, workflow: WorkflowDefinition) -> Dict[str, NodeRunRecord]:
+        self._started_perf = time.perf_counter()
         order = topological_order(workflow)
         node_by_id = {node.id: node for node in workflow.nodes}
         incoming = _incoming_edges(workflow)
@@ -307,11 +450,15 @@ class WorkflowExecutor:
         }
         failure_message: Optional[str] = None
 
-        for node_id in order:
+        for index, node_id in enumerate(order):
             node = node_by_id[node_id]
             record = records[node_id]
             input_edges = [_edge_payload(edge) for edge in incoming[node_id]]
             output_edges = [_edge_payload(edge) for edge in outgoing[node_id]]
+            cancel_reason = self._cancel_reason()
+            if cancel_reason:
+                self._mark_cancelled_remaining(order[index:], records, node_by_id, incoming, outgoing, cancel_reason)
+                raise WorkflowCancelledError(cancel_reason, records)
             if node_id not in execute_set:
                 record.status = "skipped"
                 record.finished_at = utc_now()
@@ -423,6 +570,8 @@ class WorkflowExecutor:
                             "duration_ms": duration_ms,
                         },
                     )
+            except WorkflowCancelledError:
+                raise
             except Exception as exc:
                 record.status = "failed"
                 record.error = str(exc)
@@ -447,6 +596,42 @@ class WorkflowExecutor:
 
         return records
 
+    def _mark_cancelled_remaining(
+        self,
+        node_ids: list[str],
+        records: dict[str, NodeRunRecord],
+        node_by_id: dict[str, WorkflowNode],
+        incoming: dict[str, list[WorkflowEdge]],
+        outgoing: dict[str, list[WorkflowEdge]],
+        reason: str = "Run cancelled.",
+    ) -> None:
+        for node_id in node_ids:
+            record = records[node_id]
+            if record.status not in {"queued", "running"}:
+                continue
+            node = node_by_id[node_id]
+            record.status = "cancelled"
+            record.finished_at = utc_now()
+            record.warnings.append(reason)
+            self.emit(
+                "node_cancelled",
+                {
+                    "node_id": node.id,
+                    "node_type": node.type,
+                    "reason": reason,
+                    "input_edges": [_edge_payload(edge) for edge in incoming[node_id]],
+                    "output_edges": [_edge_payload(edge) for edge in outgoing[node_id]],
+                },
+            )
+
+    def _cancel_reason(self) -> Optional[str]:
+        if self.cancel_checker():
+            return "Run cancelled."
+        if self.timeout_sec is not None and self._started_perf is not None:
+            if time.perf_counter() - self._started_perf >= self.timeout_sec:
+                return f"Run timed out after {self.timeout_sec:g} seconds."
+        return None
+
     def _execute_node(
         self,
         node: WorkflowNode,
@@ -455,18 +640,26 @@ class WorkflowExecutor:
     ) -> NodeContext:
         if node.type == "structure_generator":
             return self._execute_structure(node)
+        if node.type == "data_import":
+            return self._execute_data_import(node)
         if node.type == "data_generator":
             return self._execute_data(node, parents)
         if node.type == "data_combiner":
             return self._execute_data_combiner(node, parents)
         if node.type == "algorithm":
             return self._execute_algorithm(node, parents)
+        if node.type == "experiment_sweep":
+            return self._execute_experiment_sweep(node, parents)
+        if node.type == "graph_editor":
+            return self._execute_graph_editor(node, parents)
         if node.type == "evaluation":
             return self._execute_evaluation(node, parents, input_edges or [])
         if node.type == "evaluation_summary":
             return self._execute_evaluation_summary(node, parents, input_edges or [])
         if node.type == "graph_view":
             return self._execute_graph_view(node, parents)
+        if node.type == "report_export":
+            return self._execute_report_export(node, parents)
         raise WorkflowValidationError(f"Unknown node type: {node.type}")
 
     def _validate_node_inputs(
@@ -617,6 +810,103 @@ class WorkflowExecutor:
             summary=graph["graph_meta"],
         )
         return NodeContext(public={"kind": "graph", "graph": graph}, arrays={"B_true": B, "W_true": W})
+
+    def _execute_data_import(self, node: WorkflowNode) -> NodeContext:
+        params = _node_params(node)
+        import_id = str(params.get("import_id") or "").strip()
+        if not import_id:
+            raise WorkflowValidationError("Data Import requires `import_id`.")
+        path = self.storage.resolve_import_path(import_id)
+        suffix = path.suffix.lower()
+        x_key = str(params.get("x_key") or "X")
+        b_key = str(params.get("b_key") or "B_true")
+        w_key = str(params.get("w_key") or "W_true")
+        has_header = bool(params.get("has_header")) if _has_value(params.get("has_header")) else suffix == ".csv"
+        standardize = bool(params.get("standardize")) if _has_value(params.get("standardize")) else False
+        arrays: dict[str, np.ndarray] = {}
+        labels: list[str] = []
+
+        if suffix == ".csv":
+            if has_header:
+                with path.open("r", encoding="utf-8-sig", newline="") as handle:
+                    reader = csv.reader(handle)
+                    labels = [str(item).strip() or f"X{index + 1}" for index, item in enumerate(next(reader))]
+                X = np.loadtxt(path, delimiter=",", skiprows=1, dtype=float, ndmin=2)
+            else:
+                X = np.loadtxt(path, delimiter=",", dtype=float, ndmin=2)
+        elif suffix == ".npy":
+            X = np.asarray(np.load(path, allow_pickle=False), dtype=float)
+        elif suffix == ".npz":
+            with np.load(path, allow_pickle=False) as data:
+                if x_key not in data.files:
+                    raise WorkflowValidationError(f"NPZ import is missing X array key `{x_key}`.")
+                X = np.asarray(data[x_key], dtype=float)
+                if b_key in data.files:
+                    arrays["B_true"] = np.asarray(data[b_key], dtype=int)
+                if w_key in data.files:
+                    arrays["W_true"] = np.asarray(data[w_key], dtype=float)
+                if "feature_order" in data.files:
+                    labels = [str(item) for item in np.asarray(data["feature_order"]).tolist()]
+        else:
+            raise WorkflowValidationError("Unsupported data import file type.")
+
+        X = np.asarray(X, dtype=float)
+        if X.ndim != 2:
+            raise WorkflowValidationError(f"Imported X must be a two-dimensional matrix; got shape {X.shape}.")
+        if not np.isfinite(X).all():
+            raise WorkflowValidationError("Imported X contains NaN or infinite values.")
+        if standardize:
+            mean = X.mean(axis=0)
+            std = X.std(axis=0)
+            std[std < 1e-12] = 1.0
+            X = (X - mean) / std
+        labels = labels if len(labels) == X.shape[1] else [f"X{i + 1}" for i in range(X.shape[1])]
+        if "W_true" not in arrays and "B_true" in arrays:
+            arrays["W_true"] = np.asarray(arrays["B_true"], dtype=float)
+        if "B_true" not in arrays and "W_true" in arrays:
+            arrays["B_true"] = binary_adjacency(arrays["W_true"])
+        for key in ("B_true", "W_true"):
+            if key in arrays and arrays[key].shape != (X.shape[1], X.shape[1]):
+                raise WorkflowValidationError(f"Imported {key} shape {arrays[key].shape} does not match X feature count {X.shape[1]}.")
+
+        arrays["X"] = X
+        ref = self.storage.write_npz(
+            self.run_dir,
+            f"{node.id}_imported_data",
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="data",
+            **arrays,
+        )
+        matrix_summaries = {"X": matrix_summary(X)}
+        if "B_true" in arrays:
+            matrix_summaries["B_true"] = matrix_summary(arrays["B_true"])
+        if "W_true" in arrays:
+            matrix_summaries["W_true"] = matrix_summary(arrays["W_true"])
+        data = {
+            "feature_order": labels,
+            "data_meta": {
+                "source": "import",
+                "import_id": import_id,
+                "filename": path.name,
+                "n_samples": int(X.shape[0]),
+                "n_features": int(X.shape[1]),
+                "standardize": standardize,
+            },
+            "matrix_summary": matrix_summaries,
+            "data_preview": _matrix_table_preview(X, labels),
+            "matrix_ref": ref,
+        }
+        data["artifact_ref"] = self.storage.write_artifact_json(
+            self.run_dir,
+            f"{node.id}_imported_data",
+            data,
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="data",
+            summary=data["data_meta"],
+        )
+        return NodeContext(public={"kind": "data", "data": data}, arrays=arrays)
 
     def _execute_data(self, node: WorkflowNode, parents: list[NodeContext]) -> NodeContext:
         graph_input: Optional[GraphLike] = None
@@ -824,9 +1114,14 @@ class WorkflowExecutor:
         params = _node_params(node)
         algorithm_id = str(params.get("algorithm_id") if _has_value(params.get("algorithm_id")) else "PC")
         threshold = _float_param(params, "w_threshold", 0.3)
+        timeout_sec = _optional_float_param(params, "timeout_sec", self.node_timeout_sec)
         X = np.asarray(data_parent.arrays["X"], dtype=float)
 
-        baseline = run_official_baseline(algorithm_id, X, params)
+        baseline = (
+            run_official_baseline_with_timeout(algorithm_id, X, params, timeout_sec)
+            if timeout_sec is not None
+            else run_official_baseline(algorithm_id, X, params)
+        )
         W_est = np.asarray(baseline.W_est, dtype=float)
         if W_est.shape != (X.shape[1], X.shape[1]):
             raise WorkflowValidationError(
@@ -898,6 +1193,179 @@ class WorkflowExecutor:
             public={"kind": "algorithm_result", "algorithm_result": result},
             arrays={"W_est": W_est, "B_est": B_est, "edge_scores": edge_scores},
         )
+
+    def _execute_experiment_sweep(self, node: WorkflowNode, parents: list[NodeContext]) -> NodeContext:
+        data_parent = self._find_parent(parents, "data")
+        params = _node_params(node)
+        X = np.asarray(data_parent.arrays["X"], dtype=float)
+        labels = data_parent.public["data"]["feature_order"]
+        algorithms = [str(item) for item in _list_param(params.get("algorithms"), ["PC", "GES"]) if str(item)]
+        seeds = [item for item in _list_param(params.get("seeds"), [None])]
+        param_grid = params.get("param_grid") if isinstance(params.get("param_grid"), dict) else {}
+        metrics = [str(item) for item in _list_param(params.get("metrics"), ["shd", "f1", "precision", "recall", "aupr", "dag_error", "is_acyclic"])]
+        threshold = _float_param(params, "threshold", 0.3)
+        timeout_sec = _optional_float_param(params, "timeout_sec", self.node_timeout_sec)
+        graph_likes = self._graph_likes_from_inputs(parents, [])
+        truth = next((item for item in graph_likes if item.kind in {"data", "graph"}), None)
+        rows: list[dict[str, Any]] = []
+        result_refs: list[dict[str, Any]] = []
+        warnings: list[str] = []
+
+        for algorithm in algorithms:
+            grid = param_grid.get(algorithm, param_grid) if isinstance(param_grid, dict) else {}
+            for combo in _expand_param_grid(grid):
+                for seed in seeds:
+                    run_params = {**combo, "algorithm_id": algorithm, "w_threshold": threshold}
+                    if seed is not None and seed != "":
+                        run_params["seed"] = seed
+                    start = time.perf_counter()
+                    baseline = (
+                        run_official_baseline_with_timeout(algorithm, X, run_params, timeout_sec)
+                        if timeout_sec is not None
+                        else run_official_baseline(algorithm, X, run_params)
+                    )
+                    W_est = np.asarray(baseline.W_est, dtype=float)
+                    np.fill_diagonal(W_est, 0.0)
+                    B_est = np.asarray(baseline.B_est, dtype=int)
+                    edge_scores = np.asarray(baseline.edge_scores, dtype=float)
+                    ref = self.storage.write_npz(
+                        self.run_dir,
+                        f"{node.id}_{algorithm}_{len(rows) + 1}",
+                        node_id=node.id,
+                        node_type=node.type,
+                        output_kind="algorithm_result",
+                        W_est=W_est,
+                        B_est=B_est,
+                        edge_scores=edge_scores,
+                    )
+                    result_refs.append(ref)
+                    row = {
+                        "rank": 0,
+                        "label": f"{algorithm} #{len(rows) + 1}",
+                        "algorithm": algorithm,
+                        "seed": seed,
+                        "params": baseline.params or combo,
+                        "runtime": float(baseline.runtime or (time.perf_counter() - start)),
+                        "n_iter": baseline.n_iter,
+                        "is_dag": bool(baseline.is_dag),
+                        "graph_space": baseline.graph_space,
+                        "artifact_id": ref.get("artifact_id"),
+                    }
+                    if truth is not None and truth.B.shape == B_est.shape:
+                        metric_values = MetricsCalculator(metrics=metrics, threshold=threshold).calculate(
+                            truth.B,
+                            W_est,
+                            score_est=edge_scores,
+                            return_all=True,
+                        )
+                        row.update(metric_values)
+                    elif truth is None:
+                        warnings.append("No truth graph input was available; sweep rows omit structure metrics.")
+                    else:
+                        warnings.append(f"Truth graph shape {truth.B.shape} does not match {algorithm} result shape {B_est.shape}.")
+                    rows.append(row)
+
+        primary_metric = str(params.get("primary_metric") or ("f1" if any("f1" in row for row in rows) else "runtime"))
+        direction = _resolve_sort_order(primary_metric, str(params.get("sort_order") or "auto"))
+        rows = _rank_rows(rows, primary_metric, direction)
+        summary = {
+            "kind": "evaluation_summary",
+            "primary_metric": primary_metric,
+            "sort_order": str(params.get("sort_order") or "auto"),
+            "effective_sort_order": direction,
+            "rows": rows,
+            "best_by_metric": _best_by_metric(rows),
+            "summary_meta": {
+                "source": "experiment_sweep",
+                "algorithm_count": len(algorithms),
+                "row_count": len(rows),
+                "threshold": threshold,
+            },
+            "artifact_refs": result_refs,
+        }
+        summary["artifact_ref"] = self.storage.write_artifact_json(
+            self.run_dir,
+            f"{node.id}_experiment_sweep",
+            summary,
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="evaluation_summary",
+            summary=summary["summary_meta"],
+        )
+        summary["csv_ref"] = self.storage.write_artifact_text(
+            self.run_dir,
+            f"{node.id}_experiment_sweep",
+            _rows_to_csv(rows),
+            kind="csv",
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="evaluation_summary",
+            summary={"row_count": len(rows), "primary_metric": primary_metric},
+        )
+        return NodeContext(public={"kind": "evaluation_summary", "evaluation_summary": summary}, warnings=list(dict.fromkeys(warnings)))
+
+    def _execute_graph_editor(self, node: WorkflowNode, parents: list[NodeContext]) -> NodeContext:
+        graph_input = next((self._graph_like_from_context(parent) for parent in parents if self._graph_like_from_context(parent) is not None), None)
+        if graph_input is None:
+            raise WorkflowValidationError("Graph Editor requires a graph input.")
+        params = _node_params(node)
+        W = np.asarray(graph_input.W, dtype=float).copy()
+        labels = list(graph_input.labels)
+        label_to_index = {label: index for index, label in enumerate(labels)}
+        edits = params.get("edits") if isinstance(params.get("edits"), list) else []
+        for edit in edits:
+            if not isinstance(edit, dict):
+                continue
+            source = _node_index(edit.get("source"), label_to_index)
+            target = _node_index(edit.get("target"), label_to_index)
+            if source is None or target is None or source == target:
+                raise WorkflowValidationError(f"Invalid graph edit endpoints: {edit!r}")
+            op = str(edit.get("op") or edit.get("type") or "set_edge")
+            if op in {"remove_edge", "delete_edge", "remove"}:
+                W[source, target] = 0.0
+            else:
+                W[source, target] = float(edit.get("weight", 1.0))
+        np.fill_diagonal(W, 0.0)
+        if not is_dag(W):
+            raise WorkflowValidationError("Graph Editor produced a cyclic graph.")
+        B = binary_adjacency(W)
+        ref = self.storage.write_npz(
+            self.run_dir,
+            f"{node.id}_graph",
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="graph",
+            B_true=B,
+            W_true=W,
+        )
+        graph = {
+            "node_labels": labels,
+            "nodes": graph_nodes(labels),
+            "edge_list": edge_list_from_matrix(W, labels, threshold=0.0),
+            "graph_meta": {
+                "graph_space": "dag",
+                "d": int(W.shape[0]),
+                "s0": int(np.count_nonzero(B)),
+                "source": graph_input.source,
+                "edit_count": len(edits),
+                "is_dag": True,
+            },
+            "matrix_summary": {
+                "adjacency": matrix_summary(B),
+                "weights": matrix_summary(W, ref),
+            },
+            "matrix_ref": ref,
+        }
+        graph["artifact_ref"] = self.storage.write_artifact_json(
+            self.run_dir,
+            f"{node.id}_graph",
+            graph,
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="graph",
+            summary=graph["graph_meta"],
+        )
+        return NodeContext(public={"kind": "graph", "graph": graph}, arrays={"B_true": B, "W_true": W})
 
     def _execute_evaluation(
         self,
@@ -1129,6 +1597,66 @@ class WorkflowExecutor:
             },
         )
         return NodeContext(public={"kind": "evaluation_summary", "evaluation_summary": summary})
+
+    def _execute_report_export(self, node: WorkflowNode, parents: list[NodeContext]) -> NodeContext:
+        params = _node_params(node)
+        title = str(params.get("title") or "DAGBoard Experiment Report")
+        sections = [f"# {title}", "", f"Generated: {utc_now().isoformat()}", ""]
+        artifact_refs: list[dict[str, Any]] = []
+        for index, parent in enumerate(parents, start=1):
+            kind = str(parent.public.get("kind", f"input_{index}"))
+            sections.append(f"## {kind}")
+            public = parent.public.get(kind) if kind in parent.public else parent.public
+            if isinstance(public, dict):
+                refs = _artifact_refs_from_public(public)
+                artifact_refs.extend(refs)
+                if kind == "evaluation_summary" and isinstance(public.get("rows"), list):
+                    sections.append(_markdown_table(public["rows"][:20]))
+                elif kind == "evaluation" and isinstance(public.get("metrics"), dict):
+                    sections.append(_markdown_kv(public["metrics"]))
+                else:
+                    sections.append("```json")
+                    sections.append(_compact_json(public))
+                    sections.append("```")
+            sections.append("")
+        markdown = "\n".join(sections).strip() + "\n"
+        html_text = _markdown_to_simple_html(markdown)
+        md_ref = self.storage.write_artifact_text(
+            self.run_dir,
+            f"{node.id}_report",
+            markdown,
+            kind="md",
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="report",
+            summary={"title": title, "format": "markdown"},
+        )
+        html_ref = self.storage.write_artifact_text(
+            self.run_dir,
+            f"{node.id}_report",
+            html_text,
+            kind="html",
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="report",
+            summary={"title": title, "format": "html"},
+        )
+        report = {
+            "title": title,
+            "formats": {"markdown": md_ref, "html": html_ref},
+            "artifact_refs": artifact_refs,
+            "summary": {"input_count": len(parents), "generated_at": utc_now().isoformat()},
+        }
+        report["artifact_ref"] = self.storage.write_artifact_json(
+            self.run_dir,
+            f"{node.id}_report_manifest",
+            report,
+            node_id=node.id,
+            node_type=node.type,
+            output_kind="report",
+            summary=report["summary"],
+        )
+        return NodeContext(public={"kind": "report", "report": report})
 
     def _graph_likes_from_inputs(
         self,

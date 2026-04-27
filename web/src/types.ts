@@ -1,7 +1,7 @@
 import type { Edge, Node } from '@xyflow/react';
 
-export type NodeStatus = 'idle' | 'queued' | 'blocked' | 'running' | 'success' | 'failed' | 'skipped';
-export type RunStatus = 'queued' | 'running' | 'completed' | 'failed';
+export type NodeStatus = 'idle' | 'queued' | 'blocked' | 'running' | 'success' | 'failed' | 'skipped' | 'cancelled';
+export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export type NodeField = {
   name: string;
@@ -116,6 +116,8 @@ export type RunOptions = {
   target_node_id?: string | null;
   target_node_ids?: string[];
   disabled_node_ids?: string[];
+  timeout_sec?: number | null;
+  node_timeout_sec?: number | null;
 };
 
 export type ArtifactRecord = {
@@ -125,12 +127,36 @@ export type ArtifactRecord = {
   node_type?: string | null;
   output_kind?: string | null;
   name: string;
-  kind: 'json' | 'npz';
+  kind: 'json' | 'npz' | 'csv' | 'md' | 'html';
   rel_path: string;
   size: number;
   created_at: string;
   summary: Record<string, unknown>;
   arrays?: Record<string, unknown>;
+};
+
+export type ImportRecord = {
+  import_id: string;
+  filename: string;
+  suffix: string;
+  size: number;
+  created_at: string;
+  path?: string;
+};
+
+export type RunCompareRow = Record<string, unknown> & {
+  run_id?: string;
+  workflow_name?: string;
+  node_id?: string;
+  algorithm?: string;
+  seed?: unknown;
+  runtime?: number;
+};
+
+export type RunComparePayload = {
+  run_ids: string[];
+  rows: RunCompareRow[];
+  row_count: number;
 };
 
 export type RunManifest = {

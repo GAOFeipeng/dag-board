@@ -1,16 +1,20 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { AlertCircle, CheckCircle2, Clock3, Database, EyeOff, GitBranch, GitMerge, LineChart, PlayCircle, Table2, Workflow } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock3, Database, EyeOff, FileText, GitBranch, GitMerge, LineChart, Pencil, PlayCircle, Table2, Upload, Workflow } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { NodeField, NodePort, StudioNodeData } from '../types';
 
 const iconByType = {
   structure_generator: GitBranch,
+  data_import: Upload,
   data_generator: Database,
   data_combiner: GitMerge,
   algorithm: PlayCircle,
+  experiment_sweep: Workflow,
+  graph_editor: Pencil,
   evaluation: LineChart,
   evaluation_summary: Table2,
   graph_view: Workflow,
+  report_export: FileText,
 };
 
 export function StudioNode({ id, data, selected }: NodeProps) {
@@ -18,7 +22,7 @@ export function StudioNode({ id, data, selected }: NodeProps) {
   const nodeData = data as StudioNodeData;
   const Icon = iconByType[nodeData.nodeType as keyof typeof iconByType] ?? Workflow;
   const status = nodeData.status ?? 'idle';
-  const StatusIcon = status === 'success' ? CheckCircle2 : status === 'failed' ? AlertCircle : status === 'running' ? Clock3 : null;
+  const StatusIcon = status === 'success' ? CheckCircle2 : status === 'failed' || status === 'cancelled' ? AlertCircle : status === 'running' ? Clock3 : null;
   const inputPorts = nodeData.inputPorts ?? [];
   const outputPorts = nodeData.outputPorts ?? [];
   const inputStatus = nodeData.inputStatus ?? { required: 0, satisfied: 0, missing: [] };
@@ -129,6 +133,12 @@ function InlineField({
   const update = (nextValue: unknown) => {
     if (nodeId) onChange(nextValue);
   };
+  const jsonValue =
+    field.kind === 'json'
+      ? current === null || current === undefined || current === ''
+        ? ''
+        : JSON.stringify(current)
+      : '';
   return (
     <label className="inline-field" onPointerDown={(event) => event.stopPropagation()}>
       <span>{field.label}</span>
@@ -156,6 +166,23 @@ function InlineField({
             }
             const parsed = field.kind === 'integer' ? Number.parseInt(event.target.value, 10) : Number.parseFloat(event.target.value);
             update(Number.isFinite(parsed) ? parsed : null);
+          }}
+        />
+      ) : field.kind === 'json' ? (
+        <input
+          value={jsonValue}
+          placeholder={field.placeholder}
+          onChange={(event) => {
+            const raw = event.target.value.trim();
+            if (!raw) {
+              update(null);
+              return;
+            }
+            try {
+              update(JSON.parse(raw));
+            } catch {
+              update(raw);
+            }
           }}
         />
       ) : (
