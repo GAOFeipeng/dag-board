@@ -378,6 +378,70 @@ def test_multi_algorithm_workflow_evaluates_each_branch(tmp_path: Path) -> None:
     assert "f1" in summary["best_by_metric"]
 
 
+def test_evaluation_summary_labels_same_algorithm_by_input_pipeline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_baseline(name: str, X: np.ndarray, params: dict[str, Any]) -> BaselineResult:
+        W = np.zeros((X.shape[1], X.shape[1]), dtype=float)
+        W[0, 1] = 0.8
+        return BaselineResult(
+            W_est=W,
+            B_est=(W != 0).astype(int),
+            edge_scores=np.abs(W),
+            provider="test",
+            graph_space="dag",
+            runtime=0.0,
+            is_dag=True,
+            params={},
+        )
+
+    import dag_studio.execution as execution
+
+    monkeypatch.setattr(execution, "run_official_baseline", fake_baseline)
+    storage = LocalStudioStorage(tmp_path)
+    _run_id, run_dir = storage.create_run_dir("pipeline-labels")
+    workflow = WorkflowDefinition(
+        name="pipeline labels",
+        nodes=[
+            {"id": "structure_generator-1000", "type": "structure_generator", "data": {"label": "结构生成器", "params": {"d": 4, "s0": 2, "seed": 71}}},
+            {"id": "data_generator-1111", "type": "data_generator", "data": {"label": "数据生成器", "params": {"n_samples": 18, "seed": 71}}},
+            {"id": "algorithm-2222", "type": "algorithm", "data": {"label": "算法", "params": {"algorithm_id": "DAGMA"}}},
+            {"id": "data_generator-3333", "type": "data_generator", "data": {"label": "数据生成器", "params": {"n_samples": 18, "seed": 72}}},
+            {"id": "algorithm-4444", "type": "algorithm", "data": {"label": "算法", "params": {"algorithm_id": "DAGMA"}}},
+            {"id": "data_combiner-5555", "type": "data_combiner", "data": {"label": "数据合并器", "params": {}}},
+            {"id": "algorithm-6666", "type": "algorithm", "data": {"label": "算法", "params": {"algorithm_id": "DAGMA"}}},
+            {"id": "eval-a", "type": "evaluation", "data": {"params": {"mode": "compare", "threshold": 0.3}}},
+            {"id": "eval-b", "type": "evaluation", "data": {"params": {"mode": "compare", "threshold": 0.3}}},
+            {"id": "eval-c", "type": "evaluation", "data": {"params": {"mode": "compare", "threshold": 0.3}}},
+            {"id": "summary", "type": "evaluation_summary", "data": {"params": {"primary_metric": "shd", "sort_order": "auto"}}},
+        ],
+        edges=[
+            {"source": "structure_generator-1000", "target": "data_generator-1111", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "data_generator-1111", "target": "algorithm-2222", "sourceHandle": "data", "targetHandle": "data"},
+            {"source": "algorithm-2222", "target": "data_generator-3333", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "data_generator-3333", "target": "algorithm-4444", "sourceHandle": "data", "targetHandle": "data"},
+            {"source": "data_generator-1111", "target": "data_combiner-5555", "sourceHandle": "data", "targetHandle": "data"},
+            {"source": "data_generator-3333", "target": "data_combiner-5555", "sourceHandle": "data", "targetHandle": "data"},
+            {"source": "data_combiner-5555", "target": "algorithm-6666", "sourceHandle": "data", "targetHandle": "data"},
+            {"source": "structure_generator-1000", "target": "eval-a", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "algorithm-2222", "target": "eval-a", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "structure_generator-1000", "target": "eval-b", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "algorithm-4444", "target": "eval-b", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "structure_generator-1000", "target": "eval-c", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "algorithm-6666", "target": "eval-c", "sourceHandle": "graph", "targetHandle": "graph"},
+            {"source": "eval-a", "target": "summary", "sourceHandle": "evaluation", "targetHandle": "evaluation"},
+            {"source": "eval-b", "target": "summary", "sourceHandle": "evaluation", "targetHandle": "evaluation"},
+            {"source": "eval-c", "target": "summary", "sourceHandle": "evaluation", "targetHandle": "evaluation"},
+        ],
+    )
+
+    records = WorkflowExecutor(storage, run_dir).execute(workflow)
+
+    labels = {row["label"] for row in records["summary"].outputs["evaluation_summary"]["rows"]}
+    assert labels == {"DAGMA @ Data #1111", "DAGMA @ Data #3333", "DAGMA @ Combined Data #5555"}
+
+
 def test_evaluation_compare_accepts_two_graph_like_inputs(tmp_path: Path) -> None:
     storage = LocalStudioStorage(tmp_path)
     _run_id, run_dir = storage.create_run_dir("compare")

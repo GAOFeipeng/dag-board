@@ -49,6 +49,9 @@ class NodeContext:
     public: Dict[str, Any]
     arrays: Dict[str, np.ndarray] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
+    node_id: Optional[str] = None
+    node_label: Optional[str] = None
+    node_type: Optional[str] = None
 
 
 @dataclass
@@ -61,6 +64,10 @@ class GraphLike:
     scores: np.ndarray
     graph_space: str = "dag"
     port_id: Optional[str] = None
+    node_id: Optional[str] = None
+    node_label: Optional[str] = None
+    node_type: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 NODE_TYPE_BY_ID = {node_type.id: node_type for node_type in NODE_TYPES}
@@ -369,6 +376,56 @@ def _node_index(value: Any, labels: dict[str, int]) -> Optional[int]:
     return None
 
 
+_GENERIC_NODE_LABELS = {
+    "",
+    "algorithm",
+    "算法",
+    "data",
+    "数据",
+    "data generator",
+    "数据生成器",
+    "data combiner",
+    "数据合并器",
+    "evaluation",
+    "结构评价",
+    "structure evaluation",
+    "structure generator",
+    "结构生成器",
+    "eval",
+    "评估",
+}
+
+
+def _short_node_suffix(node_id: Optional[str]) -> str:
+    if not node_id:
+        return ""
+    suffix = node_id.rsplit("-", 1)[-1]
+    if suffix == node_id:
+        return node_id
+    return suffix[-4:] if len(suffix) > 4 else suffix
+
+
+def _node_type_title(node_type: Optional[str]) -> str:
+    return {
+        "data_generator": "Data",
+        "data_import": "Imported Data",
+        "data_combiner": "Combined Data",
+        "algorithm": "Algorithm",
+        "evaluation": "Evaluation",
+        "structure_generator": "Structure",
+        "graph_editor": "Edited Graph",
+    }.get(str(node_type or ""), "Node")
+
+
+def _friendly_node_name(node_id: Optional[str], node_label: Optional[str], node_type: Optional[str]) -> str:
+    label = str(node_label or "").strip()
+    if label and label.lower() not in _GENERIC_NODE_LABELS:
+        return label
+    suffix = _short_node_suffix(node_id)
+    base = _node_type_title(node_type)
+    return f"{base} #{suffix}" if suffix else base
+
+
 def _matrix_table_preview(matrix: np.ndarray, columns: list[str], rows: int = 12, decimals: int = 4) -> dict[str, Any]:
     arr = np.asarray(matrix, dtype=float)
     row_count = min(max(rows, 0), int(arr.shape[0])) if arr.ndim >= 2 else 0
@@ -389,6 +446,23 @@ def _matrix_table_preview(matrix: np.ndarray, columns: list[str], rows: int = 12
 
 def _evaluation_label(source_node_id: str, evaluation: dict[str, Any]) -> str:
     meta = evaluation.get("eval_meta") if isinstance(evaluation.get("eval_meta"), dict) else {}
+    display_label = meta.get("display_label")
+    if isinstance(display_label, str) and display_label:
+        return display_label
+    algorithm = meta.get("algorithm")
+    prediction_input_data_label = meta.get("prediction_input_data_label")
+    if isinstance(algorithm, str) and algorithm:
+        if isinstance(prediction_input_data_label, str) and prediction_input_data_label:
+            return f"{algorithm} @ {prediction_input_data_label}"
+        prediction_label = meta.get("prediction_label")
+        if isinstance(prediction_label, str) and prediction_label:
+            return f"{algorithm} @ {prediction_label}"
+        return algorithm
+    if meta.get("mode") == "bic":
+        graph_label = meta.get("graph_label")
+        data_label = meta.get("data_label")
+        if isinstance(graph_label, str) and graph_label and isinstance(data_label, str) and data_label:
+            return f"BIC: {graph_label} @ {data_label}"
     for key in ("prediction_source", "graph_source"):
         value = meta.get(key)
         if isinstance(value, str) and value:
@@ -540,6 +614,9 @@ class WorkflowExecutor:
             start = time.perf_counter()
             try:
                 context = self._execute_node(node, parents, incoming[node_id])
+                context.node_id = node.id
+                context.node_label = str(node.data.get("label") or node.id)
+                context.node_type = node.type
                 contexts[node.id] = context
                 record.status = "success"
                 record.outputs = context.public
@@ -971,6 +1048,9 @@ class WorkflowExecutor:
                 "seed": seed,
                 "standardize": standardize,
                 "graph_source": graph_input.source,
+                "graph_source_node_id": graph_input.node_id,
+                "graph_source_label": graph_input.node_label,
+                "graph_source_type": graph_input.node_type,
                 "graph_space": graph_input.graph_space,
             },
             "matrix_summary": {
@@ -1149,6 +1229,15 @@ class WorkflowExecutor:
             "provider": metadata.get("provider", baseline.provider),
             "official_origin": metadata.get("origin"),
             "package": metadata.get("package"),
+            "input_data": {
+                "node_id": data_parent.node_id,
+                "label": _friendly_node_name(data_parent.node_id, data_parent.node_label, data_parent.node_type),
+                "node_label": data_parent.node_label,
+                "node_type": data_parent.node_type,
+                "source": data_parent.public["data"].get("data_meta", {}).get("source"),
+                "n_samples": data_parent.public["data"].get("data_meta", {}).get("n_samples"),
+                "n_features": data_parent.public["data"].get("data_meta", {}).get("n_features"),
+            },
             "params": baseline.params or {},
             "runtime": baseline.runtime,
             "n_iter": baseline.n_iter,
@@ -1428,6 +1517,24 @@ class WorkflowExecutor:
             except Exception as exc:
                 warnings.append(f"SID skipped: {exc}.")
 
+        prediction_input_data = (
+            prediction.metadata.get("input_data")
+            if isinstance(prediction.metadata.get("input_data"), dict)
+            else {}
+        )
+        prediction_input_data_label = (
+            str(prediction_input_data.get("label"))
+            if isinstance(prediction_input_data.get("label"), str) and prediction_input_data.get("label")
+            else ""
+        )
+        algorithm_name = prediction.metadata.get("algorithm") if prediction.kind == "algorithm_result" else None
+        prediction_label = _friendly_node_name(prediction.node_id, prediction.node_label, prediction.node_type)
+        truth_label = _friendly_node_name(truth.node_id, truth.node_label, truth.node_type)
+        display_label = (
+            f"{algorithm_name} @ {prediction_input_data_label}"
+            if isinstance(algorithm_name, str) and algorithm_name and prediction_input_data_label
+            else prediction_label
+        )
         payload = {
             "metrics": metric_values,
             "eval_meta": {
@@ -1435,7 +1542,17 @@ class WorkflowExecutor:
                 "threshold": threshold,
                 "graph_space": graph_space,
                 "truth_source": truth.source,
+                "truth_node_id": truth.node_id,
+                "truth_label": truth_label,
+                "truth_type": truth.node_type,
                 "prediction_source": prediction.source,
+                "prediction_node_id": prediction.node_id,
+                "prediction_label": prediction_label,
+                "prediction_type": prediction.node_type,
+                "prediction_input_data": prediction_input_data,
+                "prediction_input_data_label": prediction_input_data_label,
+                "algorithm": algorithm_name,
+                "display_label": display_label,
                 "n_features": int(B_true.shape[0]),
             },
         }
@@ -1476,12 +1593,21 @@ class WorkflowExecutor:
             "dag_error": float(0.0 if is_dag(graph.W) else 1.0),
             "is_acyclic": 1.0 if is_dag(graph.W) else 0.0,
         }
+        graph_label = _friendly_node_name(graph.node_id, graph.node_label, graph.node_type)
+        data_label = _friendly_node_name(data_parent.node_id, data_parent.node_label, data_parent.node_type)
         payload = {
             "metrics": metrics,
             "eval_meta": {
                 "mode": "bic",
                 "graph_source": graph.source,
+                "graph_node_id": graph.node_id,
+                "graph_label": graph_label,
+                "graph_type": graph.node_type,
                 "data_source": data_parent.public["data"]["data_meta"].get("source", "synthetic"),
+                "data_node_id": data_parent.node_id,
+                "data_label": data_label,
+                "data_type": data_parent.node_type,
+                "display_label": f"BIC: {graph_label} @ {data_label}",
                 "n_samples": int(X.shape[0]),
                 "n_features": int(X.shape[1]),
                 "score_direction": "lower_is_better",
@@ -1679,6 +1805,10 @@ class WorkflowExecutor:
                     scores=graph_like.scores,
                     graph_space=graph_like.graph_space,
                     port_id=port_id,
+                    node_id=input_edges[index].source if index < len(input_edges) else graph_like.node_id,
+                    node_label=parent.node_label or graph_like.node_label,
+                    node_type=parent.node_type or graph_like.node_type,
+                    metadata=graph_like.metadata,
                 )
             )
         return result
@@ -1697,6 +1827,10 @@ class WorkflowExecutor:
                 B=B,
                 scores=np.abs(W),
                 graph_space=str(graph.get("graph_meta", {}).get("graph_space", "dag")),
+                node_id=parent.node_id,
+                node_label=parent.node_label,
+                node_type=parent.node_type,
+                metadata=dict(graph.get("graph_meta", {})) if isinstance(graph.get("graph_meta"), dict) else {},
             )
         if kind == "data":
             graph_array = parent.arrays.get("W_true", parent.arrays.get("B_true"))
@@ -1713,6 +1847,10 @@ class WorkflowExecutor:
                 B=B,
                 scores=np.abs(W),
                 graph_space="dag",
+                node_id=parent.node_id,
+                node_label=parent.node_label,
+                node_type=parent.node_type,
+                metadata=dict(data.get("data_meta", {})) if isinstance(data.get("data_meta"), dict) else {},
             )
         if kind == "algorithm_result":
             W = np.asarray(parent.arrays.get("W_est", parent.arrays.get("B_est")), dtype=float)
@@ -1728,6 +1866,15 @@ class WorkflowExecutor:
                 B=B,
                 scores=np.asarray(parent.arrays.get("edge_scores", np.abs(W)), dtype=float),
                 graph_space=str(result.get("graph_space", "dag")),
+                node_id=parent.node_id,
+                node_label=parent.node_label,
+                node_type=parent.node_type,
+                metadata={
+                    "algorithm": result.get("algorithm"),
+                    "input_data": result.get("input_data") if isinstance(result.get("input_data"), dict) else {},
+                    "provider": result.get("provider"),
+                    "runtime": result.get("runtime"),
+                },
             )
         return None
 
