@@ -219,6 +219,10 @@ function StudioCanvas() {
     [nodeOutputs, nodes],
   );
   const selectedNodeOutput = selectedNodeId ? displayNodeOutputs[selectedNodeId] ?? null : null;
+  const catalogReady = localizedNodeTypes.length > 0;
+  const catalogMessage = nodeTypesQuery.isError
+    ? `Backend node catalog failed: ${nodeTypesQuery.error instanceof Error ? nodeTypesQuery.error.message : 'unknown error'}`
+    : 'Loading backend node catalog...';
   const currentSelection = useMemo(
     () => getSelectionSummary({ nodes: nodes as StudioNodeType[], edges: edges as StudioEdge[] }),
     [edges, nodes],
@@ -954,8 +958,8 @@ function StudioCanvas() {
         {validationError ? <div className="validation-banner">{validationError}</div> : null}
         <div className="canvas-wrap" ref={wrapperRef}>
           <ReactFlow
-            nodes={displayNodes}
-            edges={edges}
+            nodes={catalogReady ? displayNodes : []}
+            edges={catalogReady ? edges : []}
             onNodesChange={onNodesChangeWithHistory}
             onEdgesChange={onEdgesChangeWithSelection}
             onConnect={onConnect}
@@ -1031,6 +1035,7 @@ function StudioCanvas() {
             <Background />
             <Controls />
           </ReactFlow>
+          {!catalogReady ? <div className="canvas-loading">{catalogMessage}</div> : null}
           <div className="shortcut-hint">
             <strong>{t('shortcuts.title')}</strong>
             <span>{t('shortcuts.all')}</span>

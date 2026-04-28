@@ -236,6 +236,23 @@ button.primary:hover {
   background: #101416;
 }
 
+.canvas-loading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 8;
+  max-width: min(420px, calc(100% - 40px));
+  transform: translate(-50%, -50%);
+  border: 1px solid #384148;
+  border-radius: 8px;
+  background: #15191c;
+  color: #edf2f4;
+  padding: 14px 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+  font-size: 13px;
+  text-align: center;
+}
+
 .react-flow__node {
   font-size: 12px;
   overflow: visible;
