@@ -1,7 +1,9 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
 import type { NodeTypeDefinition, StudioEdge, StudioNode, WorkflowPayload } from './types';
 
-export type WorkflowTemplateId = 'baseline_compare' | 'residual_data_loop';
+export const WORKFLOW_TEMPLATE_IDS = ['baseline_compare', 'residual_data_loop'] as const;
+
+export type WorkflowTemplateId = (typeof WORKFLOW_TEMPLATE_IDS)[number];
 
 type WorkflowTemplateOptions = {
   idPrefix?: string;

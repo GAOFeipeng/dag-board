@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import * as graphModule from './graph';
 import * as runStateModule from './runState';
-import { createDefaultWorkflow, createWorkflowTemplate, toWorkflowPayload, workflowPayloadToCanvas, wouldCreateCycle } from './graph';
+import {
+  WORKFLOW_TEMPLATE_IDS,
+  createDefaultWorkflow,
+  createWorkflowTemplate,
+  toWorkflowPayload,
+  workflowPayloadToCanvas,
+  wouldCreateCycle,
+} from './graph';
 
 type ValidationResult = {
   valid: boolean;
@@ -78,6 +85,14 @@ describe('workflow graph helpers', () => {
     workflow.nodes[0].data.previewCollapsed = true;
     const payload = toWorkflowPayload(workflow.nodes, workflow.edges);
     expect(payload.nodes[0].data.previewCollapsed).toBe(true);
+  });
+
+  it('keeps baseline comparison available through the shared template catalog', () => {
+    const template = createWorkflowTemplate('baseline_compare');
+    const defaultWorkflow = createDefaultWorkflow();
+
+    expect(WORKFLOW_TEMPLATE_IDS).toEqual(['baseline_compare', 'residual_data_loop']);
+    expect(toWorkflowPayload(template.nodes, template.edges)).toEqual(toWorkflowPayload(defaultWorkflow.nodes, defaultWorkflow.edges));
   });
 
   it('creates a residual data-loop template with editable graph and combined evaluation', () => {

@@ -36,6 +36,11 @@ export const resources = {
         waiting: 'Run to view output',
       },
       languageSwitcher: { label: 'Language' },
+      templateMenu: {
+        button: 'Templates',
+        title: 'Start from template',
+        replace: 'Use',
+      },
       panels: {
         nodes: 'Nodes',
         inspector: 'Inspector',
@@ -302,6 +307,11 @@ export const resources = {
         waiting: '运行后查看输出',
       },
       languageSwitcher: { label: '语言' },
+      templateMenu: {
+        button: '模板',
+        title: '从模板开始',
+        replace: '使用',
+      },
       panels: {
         nodes: '节点',
         inspector: '属性',
@@ -509,6 +519,11 @@ export const resources = {
         waiting: '実行後に出力を表示',
       },
       languageSwitcher: { label: '言語' },
+      templateMenu: {
+        button: 'テンプレート',
+        title: 'テンプレートから開始',
+        replace: '使用',
+      },
       panels: {
         nodes: 'ノード',
         inspector: 'インスペクター',

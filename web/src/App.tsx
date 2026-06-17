@@ -55,8 +55,17 @@ import { NodeContextMenu } from './components/NodeContextMenu';
 import { NodePalette } from './components/NodePalette';
 import { RunPanel, type ArtifactItem } from './components/RunPanel';
 import { StudioNode } from './components/StudioNode';
+import { TemplateMenu } from './components/TemplateMenu';
 import { WorkflowRunBrowser } from './components/WorkflowRunBrowser';
-import { createDefaultWorkflow, createWorkflowTemplate, defaultParams, toWorkflowPayload, workflowPayloadToCanvas, type WorkflowTemplateId } from './graph';
+import {
+  WORKFLOW_TEMPLATE_IDS,
+  createDefaultWorkflow,
+  createWorkflowTemplate,
+  defaultParams,
+  toWorkflowPayload,
+  workflowPayloadToCanvas,
+  type WorkflowTemplateId,
+} from './graph';
 import { localizeNodeTypeCatalog } from './i18n';
 import { transformNodeOutputForParams } from './outputTransforms';
 import {
@@ -129,6 +138,10 @@ function previewOutputForNode(output: Record<string, unknown> | undefined): Reco
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function templateTranslationKey(templateId: WorkflowTemplateId): 'baselineCompare' | 'residualDataLoop' {
+  return templateId === 'residual_data_loop' ? 'residualDataLoop' : 'baselineCompare';
 }
 
 function paramsWithPatch(node: StudioNodeType, patch: Record<string, unknown>): Record<string, unknown> {
@@ -228,18 +241,12 @@ function StudioCanvas() {
     [edges, nodes],
   );
   const workflowTemplates = useMemo(
-    () => [
-      {
-        id: 'baseline_compare' as WorkflowTemplateId,
-        label: t('workflowTemplates.baselineCompare.label'),
-        description: t('workflowTemplates.baselineCompare.description'),
-      },
-      {
-        id: 'residual_data_loop' as WorkflowTemplateId,
-        label: t('workflowTemplates.residualDataLoop.label'),
-        description: t('workflowTemplates.residualDataLoop.description'),
-      },
-    ],
+    () =>
+      WORKFLOW_TEMPLATE_IDS.map((id) => ({
+        id,
+        label: t(`workflowTemplates.${templateTranslationKey(id)}.label`),
+        description: t(`workflowTemplates.${templateTranslationKey(id)}.description`),
+      })),
     [t],
   );
 
@@ -484,6 +491,18 @@ function StudioCanvas() {
     setValidationError(null);
     resetRun();
   }, [commitCanvas, nodes, resetRun]);
+
+  const replaceWorkflowTemplate = useCallback(
+    (templateId: WorkflowTemplateId) => {
+      const next = createWorkflowTemplate(templateId);
+      commitCanvas(next, { deletedNodeIds: (nodes as StudioNodeType[]).map((node) => node.id), selectNodeId: null });
+      setSelectedWorkflowId(null);
+      setSelectedRunId(null);
+      setValidationError(null);
+      resetRun();
+    },
+    [commitCanvas, nodes, resetRun],
+  );
 
   const insertWorkflowTemplate = useCallback(
     (templateId: WorkflowTemplateId, position: { x: number; y: number }) => {
@@ -926,6 +945,7 @@ function StudioCanvas() {
           </div>
           <div className="toolbar">
             <LanguageSwitcher />
+            <TemplateMenu templates={workflowTemplates} onReplaceTemplate={replaceWorkflowTemplate} />
             <button onClick={() => setBrowserOpen((value) => !value)} title={t('app.browser')}>
               <FolderOpen size={16} />
               {t('app.browser')}
