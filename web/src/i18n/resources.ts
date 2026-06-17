@@ -82,6 +82,10 @@ export const resources = {
           label: 'Algorithm sweep',
           description: 'Structure, data, multi-algorithm sweep, truth graph view, and report export.',
         },
+        dataFusionAblation: {
+          label: 'Data fusion ablation',
+          description: 'Two data sources, source-only baselines, fused-data baseline, summary, view, and report.',
+        },
       },
       status: {
         idle: 'Idle',
@@ -357,6 +361,10 @@ export const resources = {
           label: '算法扫网格',
           description: '结构、数据、多算法参数扫网格、真实图展示和报告导出。',
         },
+        dataFusionAblation: {
+          label: '数据融合消融',
+          description: '两个数据源、单源基线、融合数据基线、汇总、图展示和报告。',
+        },
       },
       status: {
         idle: '空闲',
@@ -572,6 +580,10 @@ export const resources = {
         algorithmSweep: {
           label: 'アルゴリズムスイープ',
           description: '構造、データ、複数アルゴリズムの探索、真値グラフ表示、レポート出力を配置します。',
+        },
+        dataFusionAblation: {
+          label: 'データ融合アブレーション',
+          description: '2 つのデータ源、単独ベースライン、融合データのベースライン、サマリー、表示、レポートを配置します。',
         },
       },
       status: {

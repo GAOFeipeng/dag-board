@@ -21,6 +21,11 @@ const templates: WorkflowTemplateMenuItem[] = [
     label: 'Algorithm sweep',
     description: 'Run several baselines and export a report.',
   },
+  {
+    id: 'data_fusion_ablation',
+    label: 'Data fusion ablation',
+    description: 'Compare source-only and fused-data baselines.',
+  },
 ];
 
 describe('TemplateMenu', () => {
@@ -42,11 +47,11 @@ describe('TemplateMenu', () => {
 
     expect(screen.getByRole('menu', { name: 'Start from template' })).toBeInTheDocument();
 
-    expect(screen.getAllByRole('menuitem')).toHaveLength(3);
+    expect(screen.getAllByRole('menuitem')).toHaveLength(4);
 
-    await user.click(screen.getByRole('menuitem', { name: /algorithm sweep/i }));
+    await user.click(screen.getByRole('menuitem', { name: /data fusion ablation/i }));
 
-    expect(onReplaceTemplate).toHaveBeenCalledWith('algorithm_sweep');
+    expect(onReplaceTemplate).toHaveBeenCalledWith('data_fusion_ablation');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 });

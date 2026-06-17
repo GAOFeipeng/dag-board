@@ -91,8 +91,46 @@ describe('workflow graph helpers', () => {
     const template = createWorkflowTemplate('baseline_compare');
     const defaultWorkflow = createDefaultWorkflow();
 
-    expect(WORKFLOW_TEMPLATE_IDS).toEqual(['baseline_compare', 'residual_data_loop', 'algorithm_sweep']);
+    expect(WORKFLOW_TEMPLATE_IDS).toEqual(['baseline_compare', 'residual_data_loop', 'algorithm_sweep', 'data_fusion_ablation']);
     expect(toWorkflowPayload(template.nodes, template.edges)).toEqual(toWorkflowPayload(defaultWorkflow.nodes, defaultWorkflow.edges));
+  });
+
+  it('creates a data fusion ablation template with single-source and fused comparisons', () => {
+    const workflow = createWorkflowTemplate('data_fusion_ablation');
+    const payload = toWorkflowPayload(workflow.nodes, workflow.edges);
+
+    expect(payload.nodes.map((node) => node.type)).toEqual([
+      'structure_generator',
+      'data_generator',
+      'data_generator',
+      'data_combiner',
+      'algorithm',
+      'algorithm',
+      'algorithm',
+      'evaluation',
+      'evaluation',
+      'evaluation',
+      'evaluation_summary',
+      'graph_view',
+      'report_export',
+    ]);
+    expect(payload.nodes.filter((node) => node.type === 'algorithm').map((node) => node.data.params)).toEqual([
+      { algorithm_id: 'PC' },
+      { algorithm_id: 'PC' },
+      { algorithm_id: 'PC' },
+    ]);
+    expect(payload.nodes.find((node) => node.id === 'report')?.data.params).toEqual({ title: 'Data Fusion Ablation Report' });
+    expect(payload.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'data-a', target: 'data-combiner', sourceHandle: 'data', targetHandle: 'data' }),
+        expect.objectContaining({ source: 'data-b', target: 'data-combiner', sourceHandle: 'data', targetHandle: 'data' }),
+        expect.objectContaining({ source: 'data-combiner', target: 'algo-combined', sourceHandle: 'data', targetHandle: 'data' }),
+        expect.objectContaining({ source: 'eval-a', target: 'summary', sourceHandle: 'evaluation', targetHandle: 'evaluation' }),
+        expect.objectContaining({ source: 'eval-b', target: 'summary', sourceHandle: 'evaluation', targetHandle: 'evaluation' }),
+        expect.objectContaining({ source: 'eval-combined', target: 'summary', sourceHandle: 'evaluation', targetHandle: 'evaluation' }),
+        expect.objectContaining({ source: 'summary', target: 'report', sourceHandle: 'evaluation_summary', targetHandle: 'evaluation_summary' }),
+      ]),
+    );
   });
 
   it('creates an algorithm sweep template with report-ready outputs', () => {

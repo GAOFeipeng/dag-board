@@ -1,7 +1,7 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
 import type { NodeTypeDefinition, StudioEdge, StudioNode, WorkflowPayload } from './types';
 
-export const WORKFLOW_TEMPLATE_IDS = ['baseline_compare', 'residual_data_loop', 'algorithm_sweep'] as const;
+export const WORKFLOW_TEMPLATE_IDS = ['baseline_compare', 'residual_data_loop', 'algorithm_sweep', 'data_fusion_ablation'] as const;
 
 export type WorkflowTemplateId = (typeof WORKFLOW_TEMPLATE_IDS)[number];
 
@@ -181,8 +181,55 @@ export function createWorkflowTemplate(
       ? createResidualDataLoopWorkflow()
       : templateId === 'algorithm_sweep'
         ? createAlgorithmSweepWorkflow()
+        : templateId === 'data_fusion_ablation'
+          ? createDataFusionAblationWorkflow()
         : createDefaultWorkflow();
   return materializeTemplate(template, options);
+}
+
+function createDataFusionAblationWorkflow(): { nodes: StudioNode[]; edges: Edge[] } {
+  const evaluationParams = { mode: 'compare', threshold: 0.3, graph_space: 'dag' };
+  const nodes: StudioNode[] = [
+    templateNode('structure', 'Shared Structure', 'structure_generator', { x: 40, y: 360 }, { d: 10, s0: 16, graph_type: 'ER', seed: 42 }),
+    templateNode('data-a', 'Data Source A', 'data_generator', { x: 340, y: 140 }, { n_samples: 120, sem_type: 'gauss', sem_noise: 1, seed: 42, standardize: true }),
+    templateNode('data-b', 'Data Source B', 'data_generator', { x: 340, y: 580 }, { n_samples: 120, sem_type: 'gauss', sem_noise: 1, seed: 84, standardize: true }),
+    templateNode('data-combiner', 'A + B Combined Data', 'data_combiner', { x: 650, y: 360 }, { shuffle: false, standardize: true, seed: null }),
+    templateNode('algo-a', 'Algorithm on A', 'algorithm', { x: 970, y: 80 }, { algorithm_id: 'PC' }),
+    templateNode('algo-b', 'Algorithm on B', 'algorithm', { x: 970, y: 360 }, { algorithm_id: 'PC' }),
+    templateNode('algo-combined', 'Algorithm on A+B', 'algorithm', { x: 970, y: 640 }, { algorithm_id: 'PC' }),
+    templateNode('eval-a', 'Evaluate A', 'evaluation', { x: 1280, y: 80 }, evaluationParams),
+    templateNode('eval-b', 'Evaluate B', 'evaluation', { x: 1280, y: 360 }, evaluationParams),
+    templateNode('eval-combined', 'Evaluate A+B', 'evaluation', { x: 1280, y: 640 }, evaluationParams),
+    templateNode('summary', 'Fusion Summary', 'evaluation_summary', { x: 1600, y: 360 }, { primary_metric: 'f1', sort_order: 'auto', metrics: [] }),
+    templateNode('combined-view', 'Combined Graph View', 'graph_view', { x: 1600, y: 640 }, { compare_mode: 'overlay', threshold: 0.3, top_k: 200 }),
+    templateNode('report', 'Fusion Report', 'report_export', { x: 1920, y: 420 }, { title: 'Data Fusion Ablation Report' }),
+  ];
+  const edges: Edge[] = [
+    defaultEdge('structure-data-a', 'structure', 'data-a', 'graph', 'graph'),
+    defaultEdge('structure-data-b', 'structure', 'data-b', 'graph', 'graph'),
+    defaultEdge('data-a-data-combiner', 'data-a', 'data-combiner', 'data', 'data'),
+    defaultEdge('data-b-data-combiner', 'data-b', 'data-combiner', 'data', 'data'),
+    defaultEdge('data-a-algo-a', 'data-a', 'algo-a', 'data', 'data'),
+    defaultEdge('data-b-algo-b', 'data-b', 'algo-b', 'data', 'data'),
+    defaultEdge('data-combiner-algo-combined', 'data-combiner', 'algo-combined', 'data', 'data'),
+    defaultEdge('structure-eval-a', 'structure', 'eval-a', 'graph', 'graph'),
+    defaultEdge('algo-a-eval-a', 'algo-a', 'eval-a', 'graph', 'graph'),
+    defaultEdge('structure-eval-b', 'structure', 'eval-b', 'graph', 'graph'),
+    defaultEdge('algo-b-eval-b', 'algo-b', 'eval-b', 'graph', 'graph'),
+    defaultEdge('structure-eval-combined', 'structure', 'eval-combined', 'graph', 'graph'),
+    defaultEdge('algo-combined-eval-combined', 'algo-combined', 'eval-combined', 'graph', 'graph'),
+    defaultEdge('eval-a-summary', 'eval-a', 'summary', 'evaluation', 'evaluation'),
+    defaultEdge('eval-b-summary', 'eval-b', 'summary', 'evaluation', 'evaluation'),
+    defaultEdge('eval-combined-summary', 'eval-combined', 'summary', 'evaluation', 'evaluation'),
+    defaultEdge('data-combiner-combined-view', 'data-combiner', 'combined-view', 'data', 'data'),
+    defaultEdge('algo-combined-combined-view', 'algo-combined', 'combined-view', 'graph', 'graph'),
+    defaultEdge('eval-combined-combined-view', 'eval-combined', 'combined-view', 'evaluation', 'evaluation'),
+    defaultEdge('structure-report', 'structure', 'report', 'graph', 'graph'),
+    defaultEdge('data-combiner-report', 'data-combiner', 'report', 'data', 'data'),
+    defaultEdge('summary-report', 'summary', 'report', 'evaluation_summary', 'evaluation_summary'),
+    defaultEdge('combined-view-report', 'combined-view', 'report', 'graph_view', 'graph_view'),
+  ];
+  return { nodes, edges };
 }
 
 function createAlgorithmSweepWorkflow(): { nodes: StudioNode[]; edges: Edge[] } {

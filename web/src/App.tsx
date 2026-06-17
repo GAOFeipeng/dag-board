@@ -140,12 +140,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function templateTranslationKey(templateId: WorkflowTemplateId): 'baselineCompare' | 'residualDataLoop' | 'algorithmSweep' {
+function templateTranslationKey(
+  templateId: WorkflowTemplateId,
+): 'baselineCompare' | 'residualDataLoop' | 'algorithmSweep' | 'dataFusionAblation' {
   if (templateId === 'residual_data_loop') {
     return 'residualDataLoop';
   }
   if (templateId === 'algorithm_sweep') {
     return 'algorithmSweep';
+  }
+  if (templateId === 'data_fusion_ablation') {
+    return 'dataFusionAblation';
   }
   return 'baselineCompare';
 }
