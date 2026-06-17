@@ -1179,6 +1179,7 @@ function StudioCanvas() {
             selectedNodeId={selectedNodeId}
             manifest={manifest}
             artifacts={artifactsQuery.data ?? []}
+            onSelectNode={setSelectedNodeId}
             onOpenArtifact={(artifact) => void openArtifact(artifact)}
             onCancelRun={() => void cancelActiveRun()}
             onExportReport={() => void exportRunReport()}

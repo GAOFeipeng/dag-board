@@ -1025,6 +1025,22 @@ button.primary:hover {
   white-space: nowrap;
 }
 
+.log-event {
+  grid-template-columns: 132px minmax(0, 1fr) auto;
+}
+
+.event-node-button {
+  min-height: 24px;
+  max-width: 150px;
+  padding: 0 7px;
+  overflow: hidden;
+  border-color: #384148;
+  color: #8bd5ff;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .run-browser-row {
   grid-template-columns: 20px minmax(0, 1fr);
   padding: 5px 6px;

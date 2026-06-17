@@ -45,6 +45,7 @@ export type RunPanelProps = {
   selectedNodeId: string | null;
   manifest?: ExtendedRunManifest | null;
   artifacts?: ArtifactRecord[];
+  onSelectNode?: (nodeId: string) => void;
   onOpenArtifact?: (artifact: ArtifactItem) => void;
   onCancelRun?: () => void;
   onExportReport?: () => void;
@@ -94,6 +95,9 @@ function eventName(event: ExtendedRunEvent): string {
 }
 
 function eventNodeId(event: ExtendedRunEvent): string | null {
+  if (typeof event.node_id === 'string' && event.node_id) {
+    return event.node_id;
+  }
   const payload = event.payload;
   if (!isRecord(payload)) return null;
   for (const key of ['node_id', 'nodeId', 'source', 'target']) {
@@ -104,6 +108,8 @@ function eventNodeId(event: ExtendedRunEvent): string | null {
 }
 
 function eventMessage(event: ExtendedRunEvent): string {
+  if (typeof event.message === 'string' && event.message) return event.message;
+  if (typeof event.detail === 'string' && event.detail) return event.detail;
   const payload = event.payload;
   if (!isRecord(payload)) return '';
   for (const key of ['node_id', 'nodeId', 'error', 'message', 'detail']) {
@@ -216,6 +222,12 @@ function collectArtifacts(outputs: OutputEntry[], records: ArtifactRecord[] = []
 function matchesFilter(text: string, filter: string): boolean {
   const normalized = filter.trim().toLowerCase();
   return !normalized || text.toLowerCase().includes(normalized);
+}
+
+function isIssueEvent(event: ExtendedRunEvent): boolean {
+  const name = eventName(event).toLowerCase();
+  const level = typeof event.level === 'string' ? event.level.toLowerCase() : '';
+  return level === 'error' || level === 'fatal' || name.includes('failed') || name.includes('blocked') || name.includes('cancelled');
 }
 
 function activeIcon(runStatus: string) {
@@ -395,6 +407,7 @@ export function RunPanel({
   selectedNodeId,
   manifest,
   artifacts: apiArtifacts = [],
+  onSelectNode,
   onOpenArtifact,
   onCancelRun,
   onExportReport,
@@ -430,6 +443,14 @@ export function RunPanel({
   const selectedMetrics = metricRows(selectedOutput);
   const activeFilter = activeTab === 'logs' ? logFilter : activeTab === 'outputs' ? outputFilter : artifactFilter;
   const activeFilterSetter = activeTab === 'logs' ? setLogFilter : activeTab === 'outputs' ? setOutputFilter : setArtifactFilter;
+  const latestIssueNodeId = useMemo(() => {
+    const issue = [...allEvents].reverse().find((event) => eventNodeId(event) && isIssueEvent(event));
+    return issue ? eventNodeId(issue) : null;
+  }, [allEvents]);
+  const focusNode = (nodeId: string) => {
+    onSelectNode?.(nodeId);
+    setFocusSelected(true);
+  };
 
   return (
     <footer className="run-panel">
@@ -452,6 +473,21 @@ export function RunPanel({
           <button type="button" disabled={!onExportReport || runStatus === 'idle'} onClick={onExportReport} style={{ minHeight: 30, padding: '0 9px' }}>
             <FileText size={13} />
             Report
+          </button>
+          <button
+            type="button"
+            disabled={!onSelectNode || !latestIssueNodeId}
+            onClick={() => {
+              if (latestIssueNodeId) {
+                focusNode(latestIssueNodeId);
+                setActiveTab('logs');
+              }
+            }}
+            style={{ minHeight: 30, padding: '0 9px' }}
+            title={latestIssueNodeId ? `Focus ${latestIssueNodeId}` : 'No failed node yet'}
+          >
+            <AlertTriangle size={13} />
+            Latest issue
           </button>
         </div>
         <FilterBox label={`${tabs.find((tab) => tab.id === activeTab)?.label ?? 'Items'} filter`} value={activeFilter} onChange={activeFilterSetter} />
@@ -481,12 +517,20 @@ export function RunPanel({
 
         {activeTab === 'logs' ? (
           <div className="event-log">
-            {visibleEvents.slice(-30).map((event, index) => (
-              <div key={`${event.index ?? index}-${eventName(event)}`} className={`event event-${eventName(event)}`}>
-                <span>{eventName(event)}</span>
-                <code>{eventMessage(event)}</code>
-              </div>
-            ))}
+            {visibleEvents.slice(-30).map((event, index) => {
+              const nodeId = eventNodeId(event);
+              return (
+                <div key={`${event.index ?? index}-${eventName(event)}`} className={`event log-event event-${eventName(event)}`}>
+                  <span>{eventName(event)}</span>
+                  <code title={eventMessage(event)}>{eventMessage(event)}</code>
+                  {nodeId ? (
+                    <button type="button" className="event-node-button" onClick={() => focusNode(nodeId)} disabled={!onSelectNode}>
+                      {nodeId}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
             {!visibleEvents.length ? <div className="empty-state compact">No matching run events.</div> : null}
           </div>
         ) : null}
