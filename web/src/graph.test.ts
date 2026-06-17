@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as graphModule from './graph';
 import * as runStateModule from './runState';
-import { createDefaultWorkflow, toWorkflowPayload, workflowPayloadToCanvas, wouldCreateCycle } from './graph';
+import { createDefaultWorkflow, createWorkflowTemplate, toWorkflowPayload, workflowPayloadToCanvas, wouldCreateCycle } from './graph';
 
 type ValidationResult = {
   valid: boolean;
@@ -78,6 +78,57 @@ describe('workflow graph helpers', () => {
     workflow.nodes[0].data.previewCollapsed = true;
     const payload = toWorkflowPayload(workflow.nodes, workflow.edges);
     expect(payload.nodes[0].data.previewCollapsed).toBe(true);
+  });
+
+  it('creates a residual data-loop template with editable graph and combined evaluation', () => {
+    const workflow = createWorkflowTemplate('residual_data_loop');
+    const payload = toWorkflowPayload(workflow.nodes, workflow.edges);
+
+    expect(payload.nodes.map((node) => node.type)).toEqual([
+      'structure_generator',
+      'data_generator',
+      'algorithm',
+      'evaluation',
+      'graph_editor',
+      'data_generator',
+      'data_combiner',
+      'algorithm',
+      'evaluation',
+      'evaluation_summary',
+      'graph_view',
+    ]);
+    expect(payload.nodes.find((node) => node.id === 'seed-algo')?.data.params).toEqual({ algorithm_id: 'PC' });
+    expect(payload.nodes.find((node) => node.id === 'combined-algo')?.data.params).toEqual({ algorithm_id: 'GES' });
+    expect(payload.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'seed-algo', target: 'graph-adapter', sourceHandle: 'graph', targetHandle: 'graph' }),
+        expect.objectContaining({ source: 'graph-adapter', target: 'residual-data', sourceHandle: 'graph', targetHandle: 'graph' }),
+        expect.objectContaining({ source: 'base-data', target: 'data-combiner', sourceHandle: 'data', targetHandle: 'data' }),
+        expect.objectContaining({ source: 'residual-data', target: 'data-combiner', sourceHandle: 'data', targetHandle: 'data' }),
+        expect.objectContaining({ source: 'seed-eval', target: 'summary', sourceHandle: 'evaluation', targetHandle: 'evaluation' }),
+        expect.objectContaining({ source: 'combined-eval', target: 'summary', sourceHandle: 'evaluation', targetHandle: 'evaluation' }),
+      ]),
+    );
+  });
+
+  it('materializes templates with prefixed ids and an insertion anchor', () => {
+    const workflow = createWorkflowTemplate('residual_data_loop', {
+      idPrefix: 'insert-1',
+      origin: { x: 500, y: 600 },
+      selected: true,
+    });
+
+    expect(workflow.nodes[0]).toMatchObject({
+      id: 'insert-1-structure',
+      selected: true,
+      position: { x: 500, y: 850 },
+    });
+    expect(workflow.edges[0]).toMatchObject({
+      id: 'insert-1-structure-base-data',
+      source: 'insert-1-structure',
+      target: 'insert-1-base-data',
+      selected: true,
+    });
   });
 
   it('validates connections against duplicates, cycles, disabled nodes, and IO types', () => {

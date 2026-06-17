@@ -1,6 +1,14 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
 import type { NodeTypeDefinition, StudioEdge, StudioNode, WorkflowPayload } from './types';
 
+export type WorkflowTemplateId = 'baseline_compare' | 'residual_data_loop';
+
+type WorkflowTemplateOptions = {
+  idPrefix?: string;
+  origin?: { x: number; y: number };
+  selected?: boolean;
+};
+
 export function defaultParams(definition: NodeTypeDefinition): Record<string, unknown> {
   return Object.fromEntries(definition.fields.map((field) => [field.name, field.default]));
 }
@@ -162,6 +170,112 @@ export function createDefaultWorkflow(): { nodes: StudioNode[]; edges: Edge[] } 
   return { nodes, edges };
 }
 
+export function createWorkflowTemplate(
+  templateId: WorkflowTemplateId,
+  options: WorkflowTemplateOptions = {},
+): { nodes: StudioNode[]; edges: Edge[] } {
+  const template = templateId === 'residual_data_loop' ? createResidualDataLoopWorkflow() : createDefaultWorkflow();
+  return materializeTemplate(template, options);
+}
+
+function createResidualDataLoopWorkflow(): { nodes: StudioNode[]; edges: Edge[] } {
+  const nodes: StudioNode[] = [
+    templateNode('structure', 'Structure', 'structure_generator', { x: 40, y: 290 }, { d: 10, s0: 16, graph_type: 'ER', seed: 42 }),
+    templateNode('base-data', 'Base Data', 'data_generator', { x: 330, y: 190 }, { n_samples: 120, sem_type: 'gauss', sem_noise: 1, seed: 42, standardize: true }),
+    templateNode('seed-algo', 'Seed Graph PC', 'algorithm', { x: 630, y: 190 }, { algorithm_id: 'PC' }),
+    templateNode('seed-eval', 'Evaluate Seed', 'evaluation', { x: 930, y: 40 }, { mode: 'compare', threshold: 0.3, graph_space: 'dag' }),
+    templateNode('graph-adapter', 'Graph Adapter', 'graph_editor', { x: 930, y: 340 }, { edits: [] }),
+    templateNode('residual-data', 'Residual Data', 'data_generator', { x: 1230, y: 340 }, { n_samples: 120, sem_type: 'gauss', sem_noise: 1, seed: 84, standardize: true }),
+    templateNode('data-combiner', 'Base + Residual Data', 'data_combiner', { x: 1530, y: 260 }, { shuffle: false, standardize: true, seed: null }),
+    templateNode('combined-algo', 'Combined Graph GES', 'algorithm', { x: 1830, y: 260 }, { algorithm_id: 'GES' }),
+    templateNode('combined-eval', 'Evaluate Combined', 'evaluation', { x: 2130, y: 260 }, { mode: 'compare', threshold: 0.3, graph_space: 'dag' }),
+    templateNode('summary', 'Residual Summary', 'evaluation_summary', { x: 2430, y: 150 }, { primary_metric: 'f1', sort_order: 'auto', metrics: [] }),
+    templateNode('combined-view', 'Combined Graph View', 'graph_view', { x: 2430, y: 410 }, { compare_mode: 'overlay', threshold: 0.3, top_k: 200 }),
+  ];
+  const edges: Edge[] = [
+    defaultEdge('structure-base-data', 'structure', 'base-data', 'graph', 'graph'),
+    defaultEdge('base-data-seed-algo', 'base-data', 'seed-algo', 'data', 'data'),
+    defaultEdge('base-data-seed-eval', 'base-data', 'seed-eval', 'graph', 'graph'),
+    defaultEdge('seed-algo-seed-eval', 'seed-algo', 'seed-eval', 'graph', 'graph'),
+    defaultEdge('seed-algo-graph-adapter', 'seed-algo', 'graph-adapter', 'graph', 'graph'),
+    defaultEdge('graph-adapter-residual-data', 'graph-adapter', 'residual-data', 'graph', 'graph'),
+    defaultEdge('base-data-data-combiner', 'base-data', 'data-combiner', 'data', 'data'),
+    defaultEdge('residual-data-data-combiner', 'residual-data', 'data-combiner', 'data', 'data'),
+    defaultEdge('data-combiner-combined-algo', 'data-combiner', 'combined-algo', 'data', 'data'),
+    defaultEdge('base-data-combined-eval', 'base-data', 'combined-eval', 'graph', 'graph'),
+    defaultEdge('combined-algo-combined-eval', 'combined-algo', 'combined-eval', 'graph', 'graph'),
+    defaultEdge('seed-eval-summary', 'seed-eval', 'summary', 'evaluation', 'evaluation'),
+    defaultEdge('combined-eval-summary', 'combined-eval', 'summary', 'evaluation', 'evaluation'),
+    defaultEdge('base-data-combined-view', 'base-data', 'combined-view', 'data', 'data'),
+    defaultEdge('combined-algo-combined-view', 'combined-algo', 'combined-view', 'graph', 'graph'),
+    defaultEdge('combined-eval-combined-view', 'combined-eval', 'combined-view', 'evaluation', 'evaluation'),
+  ];
+  return { nodes, edges };
+}
+
+function templateNode(
+  id: string,
+  label: string,
+  nodeType: string,
+  position: { x: number; y: number },
+  params: Record<string, unknown>,
+): StudioNode {
+  return {
+    id,
+    type: 'studio',
+    position,
+    data: {
+      label,
+      nodeType,
+      params,
+      status: 'idle',
+      disabled: false,
+      previewCollapsed: false,
+    },
+  };
+}
+
+function materializeTemplate(
+  template: { nodes: StudioNode[]; edges: Edge[] },
+  options: WorkflowTemplateOptions,
+): { nodes: StudioNode[]; edges: Edge[] } {
+  const idMap = new Map<string, string>();
+  const minX = Math.min(...template.nodes.map((node) => node.position.x));
+  const minY = Math.min(...template.nodes.map((node) => node.position.y));
+  const delta = options.origin ? { x: options.origin.x - minX, y: options.origin.y - minY } : { x: 0, y: 0 };
+
+  const nodes = template.nodes.map((node) => {
+    const nextId = options.idPrefix ? `${options.idPrefix}-${node.id}` : node.id;
+    idMap.set(node.id, nextId);
+    return {
+      ...node,
+      id: nextId,
+      selected: Boolean(options.selected),
+      position: {
+        x: node.position.x + delta.x,
+        y: node.position.y + delta.y,
+      },
+      data: {
+        ...node.data,
+        params: cloneJsonish(node.data.params),
+        status: node.data.disabled ? ('skipped' as const) : ('idle' as const),
+      },
+    };
+  });
+
+  const edges = template.edges.map((edge) => ({
+    ...edge,
+    id: options.idPrefix ? `${options.idPrefix}-${edge.id}` : edge.id,
+    source: idMap.get(edge.source) ?? edge.source,
+    target: idMap.get(edge.target) ?? edge.target,
+    selected: Boolean(options.selected),
+    markerEnd: cloneJsonish(edge.markerEnd),
+    data: edge.data ? cloneJsonish(edge.data) : edge.data,
+  }));
+
+  return { nodes, edges };
+}
+
 function defaultEdge(id: string, source: string, target: string, sourceHandle: string, targetHandle: string): Edge {
   return {
     id,
@@ -210,4 +324,11 @@ function normalizeGraphHandle(handle: string | null | undefined): string | null 
     return 'graph';
   }
   return handle ?? null;
+}
+
+function cloneJsonish<T>(value: T): T {
+  if (value === undefined) {
+    return value;
+  }
+  return JSON.parse(JSON.stringify(value)) as T;
 }

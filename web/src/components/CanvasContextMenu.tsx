@@ -1,7 +1,8 @@
-import { Clipboard, LayoutGrid, Link2, MousePointer2, Plus, X } from 'lucide-react';
+import { Clipboard, LayoutGrid, Link2, MousePointer2, Plus, Workflow, X } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { WorkflowTemplateId } from '../graph';
 import type { NodeTypeDefinition } from '../types';
 
 export type CanvasContextMenuPosition = {
@@ -12,8 +13,10 @@ export type CanvasContextMenuPosition = {
 export type CanvasContextMenuProps = {
   position: CanvasContextMenuPosition;
   nodeTypes: NodeTypeDefinition[];
+  templates: Array<{ id: WorkflowTemplateId; label: string; description: string }>;
   canPaste: boolean;
   onAddNode: (nodeTypeId: string) => void;
+  onAddTemplate: (templateId: WorkflowTemplateId) => void;
   onPaste: () => void;
   onSelectAll: () => void;
   onAutoLayout: () => void;
@@ -42,8 +45,10 @@ const menuStyle: CSSProperties = {
 export function CanvasContextMenu({
   position,
   nodeTypes,
+  templates,
   canPaste,
   onAddNode,
+  onAddTemplate,
   onPaste,
   onSelectAll,
   onAutoLayout,
@@ -105,6 +110,23 @@ export function CanvasContextMenu({
           </button>
         ))}
       </div>
+      {templates.length ? (
+        <>
+          <div className="context-separator" />
+          <div className="context-section-title">{t('canvasMenu.templates')}</div>
+          <div className="context-template-list">
+            {templates.map((template) => (
+              <button key={template.id} type="button" role="menuitem" onClick={() => run(() => onAddTemplate(template.id))}>
+                <Workflow size={14} />
+                <span>
+                  <strong>{template.label}</strong>
+                  <small>{template.description}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
       <div className="context-separator" />
       <button type="button" role="menuitem" disabled={!canPaste} onClick={() => run(onPaste)}>
         <Clipboard size={14} />

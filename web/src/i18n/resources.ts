@@ -57,11 +57,22 @@ export const resources = {
       canvasMenu: {
         title: 'Canvas actions',
         addNode: 'Add node',
+        templates: 'Templates',
         paste: 'Paste',
         selectAll: 'Select all',
         autoLayout: 'Auto layout',
         restoreEdges: 'Restore default links',
         clearSelection: 'Clear selection',
+      },
+      workflowTemplates: {
+        baselineCompare: {
+          label: 'Baseline comparison',
+          description: 'Structure, data, PC/GES/NOTEARS, evaluation, views, and summary.',
+        },
+        residualDataLoop: {
+          label: 'Residual data loop',
+          description: 'Seed graph, editable graph adapter, residual data, combiner, and comparison summary.',
+        },
       },
       status: {
         idle: 'Idle',
@@ -312,11 +323,22 @@ export const resources = {
       canvasMenu: {
         title: '画布操作',
         addNode: '添加节点',
+        templates: '实验模板',
         paste: '粘贴',
         selectAll: '全选',
         autoLayout: '自动整理',
         restoreEdges: '恢复默认连线',
         clearSelection: '清空选择',
+      },
+      workflowTemplates: {
+        baselineCompare: {
+          label: '基线对比',
+          description: '结构、数据、PC/GES/NOTEARS、评价、图展示和汇总。',
+        },
+        residualDataLoop: {
+          label: '残差数据回路',
+          description: '种子结构、可编辑结构适配器、残差数据、数据合并和对比汇总。',
+        },
       },
       status: {
         idle: '空闲',
@@ -508,11 +530,22 @@ export const resources = {
       canvasMenu: {
         title: 'キャンバス操作',
         addNode: 'ノードを追加',
+        templates: 'テンプレート',
         paste: '貼り付け',
         selectAll: 'すべて選択',
         autoLayout: '自動整列',
         restoreEdges: '既定リンクを復元',
         clearSelection: '選択を解除',
+      },
+      workflowTemplates: {
+        baselineCompare: {
+          label: 'ベースライン比較',
+          description: '構造、データ、PC/GES/NOTEARS、評価、表示、サマリーを配置します。',
+        },
+        residualDataLoop: {
+          label: '残差データループ',
+          description: '初期グラフ、編集アダプター、残差データ、結合、比較サマリーを配置します。',
+        },
       },
       status: {
         idle: '待機',

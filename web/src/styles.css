@@ -526,7 +526,13 @@ button.primary:hover {
   gap: 4px;
 }
 
+.context-template-list {
+  display: grid;
+  gap: 4px;
+}
+
 .context-node-list button,
+.context-template-list button,
 .canvas-context-menu > button {
   min-height: 32px;
   border: 0;
@@ -534,8 +540,27 @@ button.primary:hover {
 }
 
 .context-node-list button:hover,
+.context-template-list button:hover,
 .canvas-context-menu > button:hover {
   background: #293137;
+}
+
+.context-template-list button {
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.context-template-list button span {
+  display: grid;
+  gap: 3px;
+}
+
+.context-template-list button small {
+  color: #a6b0b7;
+  font-size: 11px;
+  line-height: 1.25;
 }
 
 .canvas-context-menu button:disabled {

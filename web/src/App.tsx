@@ -56,7 +56,7 @@ import { NodePalette } from './components/NodePalette';
 import { RunPanel, type ArtifactItem } from './components/RunPanel';
 import { StudioNode } from './components/StudioNode';
 import { WorkflowRunBrowser } from './components/WorkflowRunBrowser';
-import { createDefaultWorkflow, defaultParams, toWorkflowPayload, workflowPayloadToCanvas } from './graph';
+import { createDefaultWorkflow, createWorkflowTemplate, defaultParams, toWorkflowPayload, workflowPayloadToCanvas, type WorkflowTemplateId } from './graph';
 import { localizeNodeTypeCatalog } from './i18n';
 import { transformNodeOutputForParams } from './outputTransforms';
 import {
@@ -226,6 +226,21 @@ function StudioCanvas() {
   const currentSelection = useMemo(
     () => getSelectionSummary({ nodes: nodes as StudioNodeType[], edges: edges as StudioEdge[] }),
     [edges, nodes],
+  );
+  const workflowTemplates = useMemo(
+    () => [
+      {
+        id: 'baseline_compare' as WorkflowTemplateId,
+        label: t('workflowTemplates.baselineCompare.label'),
+        description: t('workflowTemplates.baselineCompare.description'),
+      },
+      {
+        id: 'residual_data_loop' as WorkflowTemplateId,
+        label: t('workflowTemplates.residualDataLoop.label'),
+        description: t('workflowTemplates.residualDataLoop.description'),
+      },
+    ],
+    [t],
   );
 
   const currentCanvas = useCallback(
@@ -469,6 +484,30 @@ function StudioCanvas() {
     setValidationError(null);
     resetRun();
   }, [commitCanvas, nodes, resetRun]);
+
+  const insertWorkflowTemplate = useCallback(
+    (templateId: WorkflowTemplateId, position: { x: number; y: number }) => {
+      const inserted = createWorkflowTemplate(templateId, {
+        idPrefix: `${templateId}-${Date.now()}`,
+        origin: position,
+        selected: true,
+      });
+      commitCanvas(
+        {
+          nodes: [
+            ...(nodes as StudioNodeType[]).map((node) => ({ ...node, selected: false })),
+            ...inserted.nodes,
+          ],
+          edges: [
+            ...(edges as StudioEdge[]).map((edge) => ({ ...edge, selected: false })),
+            ...(inserted.edges as StudioEdge[]),
+          ],
+        },
+        { selectNodeId: inserted.nodes[0]?.id ?? null },
+      );
+    },
+    [commitCanvas, edges, nodes],
+  );
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -1073,8 +1112,10 @@ function StudioCanvas() {
             <CanvasContextMenu
               position={{ x: paneMenu.x, y: paneMenu.y }}
               nodeTypes={localizedNodeTypes}
+              templates={workflowTemplates}
               canPaste={canPaste}
               onAddNode={(nodeTypeId) => addNodeAt(nodeTypeId, paneMenu.flowPosition)}
+              onAddTemplate={(templateId) => insertWorkflowTemplate(templateId, paneMenu.flowPosition)}
               onPaste={() => pasteClipboard(paneMenu.flowPosition)}
               onSelectAll={selectAll}
               onAutoLayout={autoLayoutSelection}
