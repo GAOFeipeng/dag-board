@@ -16,6 +16,11 @@ const templates: WorkflowTemplateMenuItem[] = [
     label: 'Residual data loop',
     description: 'Build residual-style data experiments.',
   },
+  {
+    id: 'algorithm_sweep',
+    label: 'Algorithm sweep',
+    description: 'Run several baselines and export a report.',
+  },
 ];
 
 describe('TemplateMenu', () => {
@@ -37,9 +42,11 @@ describe('TemplateMenu', () => {
 
     expect(screen.getByRole('menu', { name: 'Start from template' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('menuitem', { name: /residual data loop/i }));
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3);
 
-    expect(onReplaceTemplate).toHaveBeenCalledWith('residual_data_loop');
+    await user.click(screen.getByRole('menuitem', { name: /algorithm sweep/i }));
+
+    expect(onReplaceTemplate).toHaveBeenCalledWith('algorithm_sweep');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 });

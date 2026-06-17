@@ -1,7 +1,7 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
 import type { NodeTypeDefinition, StudioEdge, StudioNode, WorkflowPayload } from './types';
 
-export const WORKFLOW_TEMPLATE_IDS = ['baseline_compare', 'residual_data_loop'] as const;
+export const WORKFLOW_TEMPLATE_IDS = ['baseline_compare', 'residual_data_loop', 'algorithm_sweep'] as const;
 
 export type WorkflowTemplateId = (typeof WORKFLOW_TEMPLATE_IDS)[number];
 
@@ -176,8 +176,52 @@ export function createWorkflowTemplate(
   templateId: WorkflowTemplateId,
   options: WorkflowTemplateOptions = {},
 ): { nodes: StudioNode[]; edges: Edge[] } {
-  const template = templateId === 'residual_data_loop' ? createResidualDataLoopWorkflow() : createDefaultWorkflow();
+  const template =
+    templateId === 'residual_data_loop'
+      ? createResidualDataLoopWorkflow()
+      : templateId === 'algorithm_sweep'
+        ? createAlgorithmSweepWorkflow()
+        : createDefaultWorkflow();
   return materializeTemplate(template, options);
+}
+
+function createAlgorithmSweepWorkflow(): { nodes: StudioNode[]; edges: Edge[] } {
+  const nodes: StudioNode[] = [
+    templateNode('structure', 'Structure', 'structure_generator', { x: 40, y: 230 }, { d: 8, s0: 12, graph_type: 'ER', seed: 42 }),
+    templateNode('data', 'Data', 'data_generator', { x: 340, y: 230 }, { n_samples: 200, sem_type: 'gauss', sem_noise: 1, seed: 42, standardize: true }),
+    templateNode(
+      'sweep',
+      'Algorithm Sweep',
+      'experiment_sweep',
+      { x: 660, y: 120 },
+      {
+        algorithms: ['PC', 'GES', 'DAGMA'],
+        param_grid: {
+          PC: { alpha: [0.01, 0.05] },
+          GES: { criterion: ['bic'] },
+          DAGMA: { lambda1: [0.02, 0.04] },
+        },
+        seeds: [null],
+        metrics: ['shd', 'f1', 'precision', 'recall', 'aupr', 'dag_error', 'is_acyclic'],
+        threshold: 0.3,
+        timeout_sec: null,
+      },
+    ),
+    templateNode('truth-view', 'Truth Graph View', 'graph_view', { x: 660, y: 430 }, { compare_mode: 'single', threshold: 0.3, top_k: 200 }),
+    templateNode('report', 'Sweep Report', 'report_export', { x: 980, y: 190 }, { title: 'Algorithm Sweep Report' }),
+  ];
+  const edges: Edge[] = [
+    defaultEdge('structure-data', 'structure', 'data', 'graph', 'graph'),
+    defaultEdge('data-sweep', 'data', 'sweep', 'data', 'data'),
+    defaultEdge('structure-sweep', 'structure', 'sweep', 'graph', 'graph'),
+    defaultEdge('structure-truth-view', 'structure', 'truth-view', 'graph', 'graph'),
+    defaultEdge('data-truth-view', 'data', 'truth-view', 'data', 'data'),
+    defaultEdge('data-report', 'data', 'report', 'data', 'data'),
+    defaultEdge('structure-report', 'structure', 'report', 'graph', 'graph'),
+    defaultEdge('sweep-report', 'sweep', 'report', 'evaluation_summary', 'evaluation_summary'),
+    defaultEdge('truth-view-report', 'truth-view', 'report', 'graph_view', 'graph_view'),
+  ];
+  return { nodes, edges };
 }
 
 function createResidualDataLoopWorkflow(): { nodes: StudioNode[]; edges: Edge[] } {

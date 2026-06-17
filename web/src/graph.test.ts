@@ -91,8 +91,34 @@ describe('workflow graph helpers', () => {
     const template = createWorkflowTemplate('baseline_compare');
     const defaultWorkflow = createDefaultWorkflow();
 
-    expect(WORKFLOW_TEMPLATE_IDS).toEqual(['baseline_compare', 'residual_data_loop']);
+    expect(WORKFLOW_TEMPLATE_IDS).toEqual(['baseline_compare', 'residual_data_loop', 'algorithm_sweep']);
     expect(toWorkflowPayload(template.nodes, template.edges)).toEqual(toWorkflowPayload(defaultWorkflow.nodes, defaultWorkflow.edges));
+  });
+
+  it('creates an algorithm sweep template with report-ready outputs', () => {
+    const workflow = createWorkflowTemplate('algorithm_sweep');
+    const payload = toWorkflowPayload(workflow.nodes, workflow.edges);
+
+    expect(payload.nodes.map((node) => node.type)).toEqual([
+      'structure_generator',
+      'data_generator',
+      'experiment_sweep',
+      'graph_view',
+      'report_export',
+    ]);
+    expect(payload.nodes.find((node) => node.id === 'sweep')?.data.params).toMatchObject({
+      algorithms: ['PC', 'GES', 'DAGMA'],
+      threshold: 0.3,
+    });
+    expect(payload.nodes.find((node) => node.id === 'report')?.data.params).toEqual({ title: 'Algorithm Sweep Report' });
+    expect(payload.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'data', target: 'sweep', sourceHandle: 'data', targetHandle: 'data' }),
+        expect.objectContaining({ source: 'structure', target: 'sweep', sourceHandle: 'graph', targetHandle: 'graph' }),
+        expect.objectContaining({ source: 'sweep', target: 'report', sourceHandle: 'evaluation_summary', targetHandle: 'evaluation_summary' }),
+        expect.objectContaining({ source: 'truth-view', target: 'report', sourceHandle: 'graph_view', targetHandle: 'graph_view' }),
+      ]),
+    );
   });
 
   it('creates a residual data-loop template with editable graph and combined evaluation', () => {

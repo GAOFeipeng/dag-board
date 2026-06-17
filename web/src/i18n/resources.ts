@@ -78,6 +78,10 @@ export const resources = {
           label: 'Residual data loop',
           description: 'Seed graph, editable graph adapter, residual data, combiner, and comparison summary.',
         },
+        algorithmSweep: {
+          label: 'Algorithm sweep',
+          description: 'Structure, data, multi-algorithm sweep, truth graph view, and report export.',
+        },
       },
       status: {
         idle: 'Idle',
@@ -349,6 +353,10 @@ export const resources = {
           label: '残差数据回路',
           description: '种子结构、可编辑结构适配器、残差数据、数据合并和对比汇总。',
         },
+        algorithmSweep: {
+          label: '算法扫网格',
+          description: '结构、数据、多算法参数扫网格、真实图展示和报告导出。',
+        },
       },
       status: {
         idle: '空闲',
@@ -560,6 +568,10 @@ export const resources = {
         residualDataLoop: {
           label: '残差データループ',
           description: '初期グラフ、編集アダプター、残差データ、結合、比較サマリーを配置します。',
+        },
+        algorithmSweep: {
+          label: 'アルゴリズムスイープ',
+          description: '構造、データ、複数アルゴリズムの探索、真値グラフ表示、レポート出力を配置します。',
         },
       },
       status: {
