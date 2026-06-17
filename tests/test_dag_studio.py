@@ -440,6 +440,13 @@ def test_evaluation_summary_labels_same_algorithm_by_input_pipeline(
 
     labels = {row["label"] for row in records["summary"].outputs["evaluation_summary"]["rows"]}
     assert labels == {"DAGMA @ Data #1111", "DAGMA @ Data #3333", "DAGMA @ Combined Data #5555"}
+    rows_by_label = {row["label"]: row for row in records["summary"].outputs["evaluation_summary"]["rows"]}
+    assert rows_by_label["DAGMA @ Data #1111"]["algorithm"] == "DAGMA"
+    assert rows_by_label["DAGMA @ Data #1111"]["input_data"] == "Data #1111"
+    assert rows_by_label["DAGMA @ Data #1111"]["input_data_node_id"] == "data_generator-1111"
+    assert rows_by_label["DAGMA @ Data #3333"]["input_data_node_id"] == "data_generator-3333"
+    assert rows_by_label["DAGMA @ Combined Data #5555"]["input_data"] == "Combined Data #5555"
+    assert rows_by_label["DAGMA @ Combined Data #5555"]["input_data_source"] == "combined"
 
 
 def test_evaluation_compare_accepts_two_graph_like_inputs(tmp_path: Path) -> None:

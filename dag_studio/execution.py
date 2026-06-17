@@ -472,6 +472,36 @@ def _evaluation_label(source_node_id: str, evaluation: dict[str, Any]) -> str:
     return source_node_id
 
 
+def _evaluation_summary_metadata(evaluation: dict[str, Any]) -> dict[str, Any]:
+    meta = evaluation.get("eval_meta") if isinstance(evaluation.get("eval_meta"), dict) else {}
+    row_meta: dict[str, Any] = {}
+    for source_key, row_key in [
+        ("algorithm", "algorithm"),
+        ("truth_label", "truth"),
+        ("prediction_label", "prediction"),
+        ("prediction_input_data_label", "input_data"),
+        ("truth_node_id", "truth_node_id"),
+        ("prediction_node_id", "prediction_node_id"),
+        ("data_label", "data"),
+        ("graph_label", "graph"),
+    ]:
+        value = meta.get(source_key)
+        if isinstance(value, (str, int, float)) and value != "":
+            row_meta[row_key] = value
+    input_data = meta.get("prediction_input_data")
+    if isinstance(input_data, dict):
+        for source_key, row_key in [
+            ("node_id", "input_data_node_id"),
+            ("source", "input_data_source"),
+            ("n_samples", "input_data_samples"),
+            ("n_features", "input_data_features"),
+        ]:
+            value = input_data.get(source_key)
+            if isinstance(value, (str, int, float)) and value != "":
+                row_meta[row_key] = value
+    return row_meta
+
+
 def _finite_float(value: Any) -> Optional[float]:
     if isinstance(value, bool):
         return float(value)
@@ -1658,6 +1688,7 @@ class WorkflowExecutor:
                 "label": _evaluation_label(source_node_id, evaluation),
                 "mode": evaluation.get("eval_meta", {}).get("mode") if isinstance(evaluation.get("eval_meta"), dict) else None,
             }
+            row.update(_evaluation_summary_metadata(evaluation))
             for key, value in metrics.items():
                 if selected_metric_set and key not in selected_metric_set and key != primary_metric:
                     continue

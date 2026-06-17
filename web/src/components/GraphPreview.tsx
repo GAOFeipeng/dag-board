@@ -215,13 +215,16 @@ function SummaryPreview({ summary }: { summary: JsonRecord }) {
   const rows = Array.isArray(summary.rows) ? summary.rows.filter(isRecord) : [];
   const primaryMetric = typeof summary.primary_metric === 'string' ? summary.primary_metric : 'f1';
   const direction = typeof summary.effective_sort_order === 'string' ? summary.effective_sort_order : summary.sort_order;
+  const hasPipelineColumns = rows.some((row) => row.algorithm !== undefined || row.input_data !== undefined);
   return (
     <div className="preview-table-wrap">
       <table className="preview-table">
         <thead>
           <tr>
             <th>Rank</th>
-            <th>Node</th>
+            <th>Pipeline</th>
+            {hasPipelineColumns ? <th>Algorithm</th> : null}
+            {hasPipelineColumns ? <th>Input Data</th> : null}
             <th>{primaryMetric}</th>
           </tr>
         </thead>
@@ -230,6 +233,8 @@ function SummaryPreview({ summary }: { summary: JsonRecord }) {
             <tr key={String(row.source_node_id ?? row.label ?? index)}>
               <td>{String(row.rank ?? index + 1)}</td>
               <td>{String(row.label ?? row.source_node_id ?? 'evaluation')}</td>
+              {hasPipelineColumns ? <td>{String(row.algorithm ?? '-')}</td> : null}
+              {hasPipelineColumns ? <td>{String(row.input_data ?? row.data ?? '-')}</td> : null}
               <td>{formatNumber(row[primaryMetric])}</td>
             </tr>
           ))}
