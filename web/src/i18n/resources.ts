@@ -39,7 +39,8 @@ export const resources = {
       templateMenu: {
         button: 'Templates',
         title: 'Start from template',
-        replace: 'Use',
+        insert: 'Insert',
+        replace: 'Replace',
       },
       panels: {
         nodes: 'Nodes',
@@ -318,7 +319,8 @@ export const resources = {
       templateMenu: {
         button: '模板',
         title: '从模板开始',
-        replace: '使用',
+        insert: '插入',
+        replace: '替换',
       },
       panels: {
         nodes: '节点',
@@ -538,7 +540,8 @@ export const resources = {
       templateMenu: {
         button: 'テンプレート',
         title: 'テンプレートから開始',
-        replace: '使用',
+        insert: '挿入',
+        replace: '置換',
       },
       panels: {
         nodes: 'ノード',

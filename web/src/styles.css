@@ -116,38 +116,51 @@ textarea {
   font-weight: 800;
 }
 
-.template-menu-popover button {
-  min-height: 0;
-  justify-content: space-between;
-  align-items: flex-start;
+.template-menu-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+  align-items: start;
   border: 0;
-  background: transparent;
+  border-radius: 6px;
   padding: 9px 8px;
   text-align: left;
 }
 
-.template-menu-popover button:hover {
+.template-menu-item:hover {
   background: #293137;
 }
 
-.template-menu-popover button span {
+.template-menu-copy {
   display: grid;
   gap: 3px;
+  min-width: 0;
 }
 
-.template-menu-popover button small {
+.template-menu-copy small {
   color: #a6b0b7;
   font-size: 11px;
   line-height: 1.3;
 }
 
-.template-menu-popover button em {
-  flex: 0 0 auto;
+.template-menu-actions {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.template-menu-actions button {
+  min-height: 26px;
+  border: 1px solid #384148;
+  border-radius: 5px;
+  background: #20262a;
   color: #8bd5ff;
   font-size: 11px;
-  font-style: normal;
   font-weight: 800;
+  padding: 0 7px;
+}
+
+.template-menu-actions button:hover {
+  background: #32404a;
 }
 
 .language-switcher {

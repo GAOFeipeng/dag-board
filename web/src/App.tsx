@@ -539,6 +539,17 @@ function StudioCanvas() {
     [commitCanvas, edges, nodes],
   );
 
+  const insertWorkflowTemplateAtViewportCenter = useCallback(
+    (templateId: WorkflowTemplateId) => {
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      const position = rect
+        ? screenToFlowPosition({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
+        : { x: 80, y: 80 };
+      insertWorkflowTemplate(templateId, position);
+    },
+    [insertWorkflowTemplate, screenToFlowPosition],
+  );
+
   const onConnect = useCallback(
     (connection: Connection) => {
       const result = preflightConnection({
@@ -956,7 +967,11 @@ function StudioCanvas() {
           </div>
           <div className="toolbar">
             <LanguageSwitcher />
-            <TemplateMenu templates={workflowTemplates} onReplaceTemplate={replaceWorkflowTemplate} />
+            <TemplateMenu
+              templates={workflowTemplates}
+              onInsertTemplate={insertWorkflowTemplateAtViewportCenter}
+              onReplaceTemplate={replaceWorkflowTemplate}
+            />
             <button onClick={() => setBrowserOpen((value) => !value)} title={t('app.browser')}>
               <FolderOpen size={16} />
               {t('app.browser')}

@@ -1,4 +1,4 @@
-import { ChevronDown, Workflow } from 'lucide-react';
+import { ChevronDown, Plus, RotateCcw, Workflow } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { WorkflowTemplateId } from '../graph';
@@ -11,10 +11,11 @@ export type WorkflowTemplateMenuItem = {
 
 type TemplateMenuProps = {
   templates: WorkflowTemplateMenuItem[];
+  onInsertTemplate: (templateId: WorkflowTemplateId) => void;
   onReplaceTemplate: (templateId: WorkflowTemplateId) => void;
 };
 
-export function TemplateMenu({ templates, onReplaceTemplate }: TemplateMenuProps) {
+export function TemplateMenu({ templates, onInsertTemplate, onReplaceTemplate }: TemplateMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -64,21 +65,38 @@ export function TemplateMenu({ templates, onReplaceTemplate }: TemplateMenuProps
         <div className="template-menu-popover" role="menu" aria-label={t('templateMenu.title')}>
           <div className="template-menu-heading">{t('templateMenu.title')}</div>
           {templates.map((template) => (
-            <button
-              key={template.id}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onReplaceTemplate(template.id);
-                setOpen(false);
-              }}
-            >
-              <span>
+            <div key={template.id} className="template-menu-item">
+              <span className="template-menu-copy">
                 <strong>{template.label}</strong>
                 <small>{template.description}</small>
               </span>
-              <em>{t('templateMenu.replace')}</em>
-            </button>
+              <span className="template-menu-actions">
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label={`${t('templateMenu.insert')} ${template.label}`}
+                  onClick={() => {
+                    onInsertTemplate(template.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Plus size={13} />
+                  {t('templateMenu.insert')}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label={`${t('templateMenu.replace')} ${template.label}`}
+                  onClick={() => {
+                    onReplaceTemplate(template.id);
+                    setOpen(false);
+                  }}
+                >
+                  <RotateCcw size={13} />
+                  {t('templateMenu.replace')}
+                </button>
+              </span>
+            </div>
           ))}
         </div>
       ) : null}
